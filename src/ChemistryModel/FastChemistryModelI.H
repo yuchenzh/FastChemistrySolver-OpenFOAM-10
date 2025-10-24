@@ -39,35 +39,16 @@ Foam::FastChemistryModel<ThermoType>::RR()
     return RR_;
 }
 
-
-template<class ThermoType>
-inline const Foam::multiComponentMixture<ThermoType>&
-Foam::FastChemistryModel<ThermoType>::mixture() const
-{
-    return mixture_;
-}
-
-
-template<class ThermoType>
-inline const Foam::PtrList<Foam::Reaction<ThermoType>>&
-Foam::FastChemistryModel<ThermoType>::reactions() const
-{
-    return 0;
-}
-
-
-template<class ThermoType>
-inline const Foam::PtrList<ThermoType>&
-Foam::FastChemistryModel<ThermoType>::specieThermos() const
-{
-    return specieThermos_;
-}
-
-
 template<class ThermoType>
 inline Foam::label Foam::FastChemistryModel<ThermoType>::nReaction() const
 {
-    return reaction.nReactions;
+    return reaction.n_Reactions;
+}
+
+template<class ThermoType>
+inline OptReaction& Foam::FastChemistryModel<ThermoType>::getReaction() const
+{
+    return reaction;
 }
 
 
@@ -87,18 +68,6 @@ Foam::FastChemistryModel<ThermoType>::RR(const label i)
 }
 
 
-template<class ThermoType>
-inline void Foam::FastChemistryModel<ThermoType>::setActive(const label i)
-{
-    this->thermo().composition().setActive(i);
-}
-
-
-template<class ThermoType>
-inline bool Foam::FastChemistryModel<ThermoType>::active(const label i) const
-{
-    return this->thermo().composition().active(i);
-}
 
 
 // ************************************************************************* //

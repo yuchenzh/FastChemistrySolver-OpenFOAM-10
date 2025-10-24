@@ -1,4 +1,3 @@
-
 template<class ThermoType>
 Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
 (
@@ -21,30 +20,38 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
 
     const volScalarField& T0vf = this->thermo().T().oldTime();
     const volScalarField& p0vf = this->thermo().p().oldTime();
-
-    reactionEvaluationScope scope(*this);
-
-    scalarField Y0(nSpecie_);
-    scalarField c0(nSpecie_);
+    
+    double* __restrict__ Phi00 = this->YTpWork[0];
+    double* __restrict__ Phi0  = this->YTpWork[1];
 
     if(firstTime || !Pstream::parRun() || !Balance)
     {
         firstTime = false;
 
         int64_t time = 0;
+
         forAll(rho0vf, celli)
         {
             auto TimeStart = std::chrono::high_resolution_clock::now();
             scalar T = T0vf[celli];
             if(T>this->Treact )
             {
-                scalar p = p0vf[celli];
+                //scalar p = p0vf[celli];
                 const scalar rho0 = rho0vf[celli];
+
+                // Load thermophysical variable into Phi vector
                 for (label i=0; i<nSpecie_; i++)
                 {
-                    Y_[i] = Y0[i] = Yvf_[i].oldTime()[celli];
+                    Phi00[i] = Yvf_[i].oldTime()[celli];
                 }
-        
+                for (label i=0; i<nSpecie_; i++)
+                {
+                    Phi00[i] = max(0,Phi00[i]);
+                    Phi0[i] =  Phi00[i];
+                }
+                Phi00[this->nSpecie()] = T;
+                Phi0[this->nSpecie()]  = T;
+
                 // Initialise time progress
                 scalar timeLeft = deltaT;
         
@@ -52,10 +59,10 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
                 while (timeLeft > small)
                 {
                     scalar dt = timeLeft;
-                    solve(p, T, Y_, celli, dt, deltaTChem_[celli]);
+                    solve(celli, T, dt, deltaTChem_[celli]);
                     timeLeft -= dt;
                 }
-        
+
                 deltaTMin = min(deltaTChem_[celli], deltaTMin);
                 deltaTChem_[celli] = min(deltaTChem_[celli], deltaTChemMax_);
         
@@ -63,9 +70,12 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
                 // Set the RR vector (used in the solver)
                 for (label i=0; i<nSpecie_; i++)
                 {
-                    RR_[i][celli] = (Y_[i]*rho0- Y0[i]*rho0)/deltaT;
+                    Phi0[i] = max(0,Phi0[i]);
+                }                
+                for (label i=0; i<nSpecie_; i++)
+                {
+                    RR_[i][celli] = (Phi0[i]- Phi00[i])*rho0*invDeltaT;
                 }
-    
             }
             else
             {
@@ -94,16 +104,11 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
         }
         else
         {
-                //std::cout<<Jc<<std::endl;
-                //std::cout<<JY<<std::endl;
-                //std::cout<<Lu<<std::endl;
-                //std::cout<<RRR<<std::endl;
             Info<<"Chemistry integration time: "<<time<<endl;
         }
         return min(deltaTMin,2*deltaT); 
     }
 
-    // reset the skip of cell
     forAll(this->skip,i)
     {
         this->skip[i] = false;
@@ -123,7 +128,6 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
             {
                 averageCPUtime = averageCPUtime + chemistryIntegrationTime[i];
             }
-
             averageCPUtime = averageCPUtime/Pstream::nProcs() + 1;
 
             for(int i = 0; i < Pstream::nProcs(); i++)
@@ -182,11 +186,9 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
                 }
             }
         }
-
         Pstream::scatter(cpuLoadTransferTable);
         Pstream::scatter(IamBusyProcess);
     }
-
 
     CurrentIter++;
     if (CurrentIter >= MaxIter-1)
@@ -211,7 +213,6 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
             }
         }
     }
-
     if(IamBusyProcess[Pstream::myProcNo()]==false)
     {
         for(int i = 0; i < cpuLoadTransferTable.size(); i++)
@@ -228,8 +229,8 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
     std::sort(CPUtimeField.begin(), CPUtimeField.end());
     std::reverse(CPUtimeField.begin(), CPUtimeField.end());
     
-    List<List<simpleDataBlock>> cellsToSend;
 
+    List<List<simpleDataBlock>> cellsToSend;
     List<List<simpleDataBlock>> cellsToReceive;     
 
     cellsToSend.clear();
@@ -249,12 +250,12 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
 
                 if (Timeleft > 0)
                 {
-                    // the cell to load into the data block
                     int celli = CPUtimeField[j].second;
                     startOfCell++;
                     endPoint = endPoint + 1;
                     this->skip[celli]=true;
                     simpleDataBlock data(nSpecie_);
+
 
                     data.T = T0vf[celli];
                     data.p = p0vf[celli];
@@ -266,6 +267,7 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
                     data.celli = celli;
                     data.deltaTChem_ = deltaTChem_[celli];
 
+
                     cellsToSend[i].append(data);
                 }
                 else
@@ -273,7 +275,6 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
                     break;
                 }
             }
-
         }
     }
     cellsToReceive.clear();
@@ -342,7 +343,6 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
             }
         }
 
-        // wait
         Pstream::waitRequests(startOfRequests);
 
         this->exchange
@@ -377,7 +377,6 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
 
     if(IamBusyProcess[Pstream::myProcNo()]==false)
     {
-
         forAll(rho0vf, celli)
         {
             auto TimeStart = std::chrono::high_resolution_clock::now();
@@ -386,12 +385,21 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
             if(T>this->Treact)
             {
                 const scalar rho0 = rho0vf[celli];
-                scalar p = p0vf[celli];
+                //scalar p = p0vf[celli];
+
+                // Load thermophysical variable into Phi vector
                 for (label i=0; i<nSpecie_; i++)
                 {
-                    Y_[i] = Y0[i] = Yvf_[i].oldTime()[celli];
+                    Phi00[i] = Yvf_[i].oldTime()[celli];
                 }
-    
+                for (label i=0; i<nSpecie_; i++)
+                {
+                    Phi00[i] = max(0,Phi00[i]);
+                    Phi0[i] =  Phi00[i];
+                }
+                Phi00[this->nSpecie()] = T;
+                Phi0[this->nSpecie()]  = T;
+
                 // Initialise time progress
                 scalar timeLeft = deltaT;
     
@@ -400,17 +408,23 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
                 {
                     scalar dt = timeLeft;
                     {
-                        solve(p, T, Y_, celli, dt, deltaTChem_[celli]);
+                        solve(celli, T, dt, deltaTChem_[celli]);
                     }
                     timeLeft -= dt;
                 }
     
                 deltaTMin = min(deltaTChem_[celli], deltaTMin);
                 deltaTChem_[celli] = min(deltaTChem_[celli], deltaTChemMax_);
-    
+
+
+                // Set the RR vector (used in the solver)
                 for (label i=0; i<nSpecie_; i++)
                 {
-                    RR_[i][celli] = (Y_[i] - Y0[i])*rho0*invDeltaT;
+                    Phi0[i] = max(0,Phi0[i]);
+                }
+                for (label i=0; i<nSpecie_; i++)
+                {
+                    RR_[i][celli] = (Phi0[i]- Phi00[i])*rho0*invDeltaT;
                 }
             }
             else
@@ -435,14 +449,21 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
 
                 if(T>this->Treact)
                 {
-                    scalar p = cellsToReceive[A][celli].p;
+                    //scalar p = cellsToReceive[A][celli].p;
 
-
+                    // Load thermophysical variable into Phi vector
                     for (label i=0; i<nSpecie_; i++)
                     {
-                        Y_[i] = Y0[i] = cellsToReceive[A][celli].Y_[i];
+                        Phi00[i] = Yvf_[i].oldTime()[celli];
                     }
-    
+                    for (label i=0; i<nSpecie_; i++)
+                    {
+                        Phi00[i] = max(0,Phi00[i]);
+                        Phi0[i] =  Phi00[i];
+                    }
+                    Phi00[this->nSpecie()] = T;
+                    Phi0[this->nSpecie()]  = T;
+
                     // Initialise time progress
                     scalar timeLeft = deltaT;
                     scalar deltaTChem_celli = cellsToReceive[A][celli].deltaTChem_;
@@ -451,18 +472,16 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
                     while (timeLeft > small)
                     {
                         scalar dt = timeLeft;
-                        {
-                            solve(p, T, Y_, celli, dt, deltaTChem_celli);
-                        }
+
+                        solve(celli, T, dt, deltaTChem_[celli]);
+
                         timeLeft -= dt;
                     }
-    
                     deltaTChem_celli = min(deltaTChem_celli, deltaTChemMax_);
     
-                    // Set the RR vector (used in the solver)
                     for (label i=0; i<nSpecie_; i++)
                     {
-                        cellsToReceive[A][celli].Y_[i] = Y_[i];
+                        cellsToReceive[A][celli].Y_[i] = max(0,Phi0[i]);
                     }
                 }
 
@@ -489,13 +508,20 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
             if(T>this->Treact)
             {
                 const scalar rho0 = rho0vf[celli];
+                //scalar p = p0vf[celli];
 
-                scalar p = p0vf[celli];
-
+                // Load thermophysical variable into Phi vector
                 for (label i=0; i<nSpecie_; i++)
                 {
-                    Y_[i] = Y0[i] = Yvf_[i].oldTime()[celli];
+                    Phi00[i] = Yvf_[i].oldTime()[celli];
                 }
+                for (label i=0; i<nSpecie_; i++)
+                {
+                    Phi00[i] = max(0,Phi00[i]);
+                    Phi0[i] =  Phi00[i];
+                }
+                Phi00[this->nSpecie()] = T;
+                Phi0[this->nSpecie()]  = T;
 
                 // Initialise time progress
                 scalar timeLeft = deltaT;
@@ -505,7 +531,7 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
                 {
                     scalar dt = timeLeft;
                     {
-                        solve(p, T, Y_, celli, dt, deltaTChem_[celli]);
+                        solve(celli, T, dt, deltaTChem_[celli]);                        
                     }
                     timeLeft -= dt;
                 }
@@ -517,7 +543,11 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
                 // Set the RR vector (used in the solver)
                 for (label i=0; i<nSpecie_; i++)
                 {
-                    RR_[i][celli] = (Y_[i] - Y0[i])*rho0*invDeltaT;
+                    Phi0[i] = max(0,Phi0[i]);
+                }
+                for (label i=0; i<nSpecie_; i++)
+                {
+                    RR_[i][celli] = (Phi0[i]- Phi00[i])*rho0*invDeltaT;
                 }
             }
             else
@@ -596,7 +626,6 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
             }
 
         }
-
         Pstream::waitRequests(startOfRequests);
 
         // Send the data
@@ -684,5 +713,3 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
 
     return min(deltaTMin,2*deltaT);
 }
-
-

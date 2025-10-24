@@ -25,20 +25,8 @@ License
 
 
 #include "FastChemistryModel.H"
-#include "UniformField.H"
-#include "localEulerDdtScheme.H"
-#include "cpuLoad.H"
 #include "basicChemistryModel.H"
-
 #include "OptReaction.H"
-#include <chrono>
-#include <vector>
-#include <utility>
-#include <algorithm>
-
-#include <iostream>
-#include <assert.h>
-
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
@@ -50,19 +38,16 @@ Foam::FastChemistryModel<ThermoType>::FastChemistryModel
 :   basicChemistryModel(thermo),
     Yvf_(this->thermo().composition().Y()),
     nSpecie_(Yvf_.size()),
-    n_(nSpecie_+1),
     jacobianType_
     (
         this->found("jacobian")
       ? jacobianTypeNames_.read(this->lookup("jacobian"))
       : jacobianType::exact
     ),
-    mixture_(refCast<const multiComponentMixture<ThermoType>>(this->thermo())),
-    specieThermos_(mixture_.specieThermos()),
-    reaction(false),
-    RR_(nSpecie_),
-    Y_(nSpecie_),
-    c_(nSpecie_),
+    reaction(),
+    RR_(this->nSpecie_),
+    n_(this->nSpecie_+1),
+    alignN(n_+(4-(this->nSpecie_+1)%4)),
     Treact(this->lookupOrDefault("Treact",0)),
     DLBthreshold(this->lookupOrDefault("DLBthreshold",1.0)),
     MaxIter(this->lookupOrDefault("Iter",1)),
@@ -96,16 +81,18 @@ Foam::FastChemistryModel<ThermoType>::FastChemistryModel
         )
     );
 
-
+    label defaultIndex = 0;
     const word defaultSpecie = thermoDict.lookup("defaultSpecie");
     Info<<"The default specie is "<<defaultSpecie<<endl;
-    this->defaultIndex = mixture_.species()[defaultSpecie];
 
-    if(this->defaultIndex<0 ||this->defaultIndex>=this->nSpecie())
+    hashedWordList speciesTable(thermoDict.lookup("species"));
+    defaultIndex = speciesTable[defaultSpecie];
+
+    if(defaultIndex<0 ||defaultIndex>=this->nSpecie())
     {
         FatalErrorInFunction
                     << "Index of default species is wrong!"
-                    << Foam::abort(FatalError);;
+                    << Foam::abort(FatalError);
     }
     reaction.readInfo(chemistryProperties,thermoDict);
 
@@ -136,9 +123,11 @@ Foam::FastChemistryModel<ThermoType>::FastChemistryModel
 
     {
         
-        size_t N = nSpecie()+1;
+
+        //size_t alignN = N;
+        alignN = static_cast<unsigned int>(n_+(4-(this->nSpecie()+1)%4));
         
-        size_t totalSize = 12*N + 3*N*N;
+        size_t totalSize = 12*alignN + 3*alignN*n_;
         size_t bytes = totalSize * sizeof(double);
         if (posix_memalign(reinterpret_cast<void**>(&this->buffer), 32, bytes))
         {
@@ -150,21 +139,20 @@ Foam::FastChemistryModel<ThermoType>::FastChemistryModel
         for (int i = 0; i < 12; i++)
         {
             YTpWork[i] = buffer + pos;
-            pos   += N;
+            pos   += alignN;
         }
         for (int i = 0; i < 3; i++)
         {
             YTpYTpWork[i] = buffer + pos;
-            pos   += N * N;
+            pos   += alignN * n_;
         }
-        assert(pos == totalSize);
     }
     forAll(cpuLoadTransferTable,i)
     {
         cpuLoadTransferTable[i].resize(Pstream::nProcs(),0);
     }
 
-    
+    reaction.alignN = this->alignN;
 }
 
 
@@ -174,204 +162,55 @@ template<class ThermoType>
 Foam::FastChemistryModel<ThermoType>::~FastChemistryModel()
 {
     free(this->buffer);
+
+    for (int i = 0; i < 12; i++)
+    {
+        YTpWork[i] = nullptr;
+    }
+    for (int i = 0; i < 3; i++)
+    {
+        YTpYTpWork[i] = nullptr;
+    }
 }
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-
-template<class ThermoType>
-void Foam::FastChemistryModel<ThermoType>::derivatives
-(
-    const scalar time,
-    const scalarField& YTp,
-    const label li,
-    scalarField& dYTpdt
-) const
-{
-}
-
 template<class ThermoType>
 void Foam::FastChemistryModel<ThermoType>::derivatives
 (
     const scalar t,
     const label li,
-    double* __restrict__ YT,    
-    double* __restrict__ dYTdt,
-    double* __restrict__ Cp,
-    double* __restrict__ Ha,
-    double* __restrict__ ExpGbyRT
-) const
-{
-    int remain = nSpecie_%4;
-
-    const double T = YT[nSpecie_];
-    const volScalarField& p0vf = this->thermo().p().oldTime();
-    double p = p0vf[li];
-    
-    double Ysum = 0;
-    for (int i=0; i<nSpecie_; i++)
-    {
-        YT[i] = max(YT[i], 0);
-        Ysum += YT[i];
-    }
-    
-    double rhoM = 0;
-    double RuTByP = reaction.Ru*T/p;
-    __m256d RuTByPv = _mm256_set1_pd(RuTByP);
-    __m256d rhoMv = _mm256_setzero_pd();
-    for (int i=0; i<nSpecie_-remain; i=i+4)
-    {
-        __m256d YTpv = _mm256_loadu_pd(&YT[i+0]);
-        __m256d invWv = _mm256_loadu_pd(&reaction.invW[i+0]);
-        rhoMv = _mm256_fmadd_pd(_mm256_mul_pd(YTpv,invWv),RuTByPv,rhoMv);
-    }
-    for(int i = nSpecie_-remain; i<nSpecie_;i++)
-    {
-        rhoM += YT[i]*reaction.invW[i]*RuTByP;            
-    }
-    rhoM += reaction.hsum4(rhoMv);
-    double invrhoM = rhoM;
-    rhoM = 1/rhoM;
-
-    for (label i=0; i<nSpecie_; i ++)
-    {
-        c_[i] = rhoM*reaction.invW[i]*YT[i];
-    }
-
-    std::memset(dYTdt, 0, n_ * sizeof(double));
-    reaction.dNdtByV(p,T,c_.data(),dYTdt,ExpGbyRT,Cp,Ha);
-
-    double CpM = 0;
-    double dTdt = 0;
-
-    __m256d CpMv = _mm256_setzero_pd();
-    __m256d dTdtv = _mm256_setzero_pd();
-    for (label i=0; i<nSpecie_-remain; i=i+4)
-    {
-        __m256d Wv = _mm256_loadu_pd(&reaction.W[i]);
-        __m256d dYTdtv = _mm256_loadu_pd(&dYTdt[i]);
-        __m256d invrhoMv = _mm256_set1_pd(invrhoM);
-        dYTdtv = _mm256_mul_pd(_mm256_mul_pd(Wv,invrhoMv),dYTdtv);
-        _mm256_storeu_pd(&dYTdt[i],dYTdtv);
-
-        __m256d YTv = _mm256_loadu_pd(&YT[i]);
-        __m256d Cpv = _mm256_loadu_pd(&Cp[i]);
-        CpMv = _mm256_fmadd_pd(YTv,Cpv,CpMv);
-        __m256d Hav = _mm256_loadu_pd(&Ha[i]);
-        dTdtv = _mm256_fmadd_pd(Hav,dYTdtv,dTdtv);
-    }
-    for(label i = nSpecie_-remain;i<nSpecie_;i++)
-    {
-        dYTdt[i] =dYTdt[i]*reaction.W[i]/rhoM;
-        CpM += YT[i]*Cp[i];
-        dTdt -= dYTdt[i]*Ha[i];
-    }
-    CpM = CpM + reaction.hsum4(CpMv);
-    dTdt = dTdt -(reaction.hsum4(dTdtv));
-    dTdt /= CpM;
-    dYTdt[nSpecie_] = dTdt;
-}
-
-template<class ThermoType>
-void Foam::FastChemistryModel<ThermoType>::derivativesC
-(
-    const scalar t,
-    const scalarField& __restrict__ CTp,
-    const label li,
-    scalarField& __restrict__ dCTpdt,
-    scalarField& __restrict__ Cp,
-    scalarField& __restrict__ Ha,
-    scalarField& __restrict__ ExpGbyRT
-) const
-{
-        /*const scalar T = CTp[nSpecie_];
-        const volScalarField& p0vf = this->thermo().p().oldTime();
-        double p = p0vf[li];
-        
-        // Evaluate the concentrations
-        for (label i=0; i<nSpecie_; i ++)
-        {
-            c_[i] = CTp[i];
-        }
-
-        // Evaluate contributions from reactions
-        dCTpdt = Zero;
-        reaction.dNdtByV
-        (
-            p,
-            T,
-            c_.data(),
-            dCTpdt.data(),
-            ExpGbyRT.data(),
-            Cp.data(),
-            Ha.data()
-        );
-
-
-
-        // dT/dt = ...
-        double rho = 0;
-        double cSum = 0;
-        for (int i = 0; i < nSpecie_; i++)
-        {
-            const double W = reaction.W[i];
-            cSum += c_[i];
-            rho += W*c_[i];
-        }
-        double cp = 0;
-        for (int i=0; i<nSpecie_; i++)
-        {
-            cp += c_[i]*Cp[i];
-        }
-        cp /= rho;
-
-        double dT = 0;
-        for (int i = 0; i < nSpecie_; i++)
-        {
-            const double hi = Ha[i];
-            dT += hi*dCTpdt[i];
-        }
-        dT /= rho*cp;
-
-        dCTpdt[nSpecie_] = -dT;*/
-}
-
-template<class ThermoType>
-void Foam::FastChemistryModel<ThermoType>::derivatives
-(
-    const scalar t,
-    const label li,
-    double* __restrict__ YT,    
-    double* __restrict__ dYTdt,
+    double* __restrict__ Phi,    
+    double* __restrict__ dPhidt,
     double* __restrict__ Cp,
     double* __restrict__ Ha
 ) const
 {
+    double* __restrict__ c = YTpYTpWork[0];
     int remain = nSpecie_%4;
-    const double T = YT[nSpecie_];
+
+    const double T = Phi[nSpecie_];
     const volScalarField& p0vf = this->thermo().p().oldTime();
     double p = p0vf[li];
     
-    double Ysum = 0;
-    for (int i=0; i<nSpecie_; i++)
+    for (int i=0; i<this->nSpecie(); i++)
     {
-        YT[i] = max(YT[i], 0);
-        Ysum += YT[i];
+        Phi[i] = std::max(Phi[i], 0.0);
     }
-
+    
     double rhoM = 0;
     double RuTByP = reaction.Ru*T/p;
     __m256d RuTByPv = _mm256_set1_pd(RuTByP);
     __m256d rhoMv = _mm256_setzero_pd();
     for (int i=0; i<nSpecie_-remain; i=i+4)
     {
-        __m256d YTpv = _mm256_loadu_pd(&YT[i+0]);
+        __m256d YTpv = _mm256_loadu_pd(&Phi[i+0]);
         __m256d invWv = _mm256_loadu_pd(&reaction.invW[i+0]);
         rhoMv = _mm256_fmadd_pd(_mm256_mul_pd(YTpv,invWv),RuTByPv,rhoMv);
     }
     for(int i = nSpecie_-remain; i<nSpecie_;i++)
     {
-        rhoM += YT[i]*reaction.invW[i]*RuTByP;            
+        rhoM += Phi[i]*reaction.invW[i]*RuTByP;            
     }
     rhoM += reaction.hsum4(rhoMv);
     double invrhoM = rhoM;
@@ -379,26 +218,27 @@ void Foam::FastChemistryModel<ThermoType>::derivatives
 
     for (label i=0; i<nSpecie_; i ++)
     {
-        c_[i] = rhoM*reaction.invW[i]*YT[i];
+        c[i] = rhoM*reaction.invW[i]*Phi[i];
     }
 
-    std::memset(dYTdt, 0, n_ * sizeof(double));
-    reaction.dNdtByV(p,T,c_.data(),dYTdt,Cp);
-    reaction.CpHa(T,Cp,Ha);
+    std::memset(dPhidt, 0, alignN * sizeof(double));
+
+    reaction.dNdtByV(p,T,c,dPhidt,Cp,Ha);
 
     double CpM = 0;
     double dTdt = 0;
+
     __m256d CpMv = _mm256_setzero_pd();
     __m256d dTdtv = _mm256_setzero_pd();
     for (label i=0; i<nSpecie_-remain; i=i+4)
     {
         __m256d Wv = _mm256_loadu_pd(&reaction.W[i]);
-        __m256d dYTdtv = _mm256_loadu_pd(&dYTdt[i]);
+        __m256d dYTdtv = _mm256_loadu_pd(&dPhidt[i]);
         __m256d invrhoMv = _mm256_set1_pd(invrhoM);
         dYTdtv = _mm256_mul_pd(_mm256_mul_pd(Wv,invrhoMv),dYTdtv);
-        _mm256_storeu_pd(&dYTdt[i],dYTdtv);
+        _mm256_storeu_pd(&dPhidt[i],dYTdtv);
 
-        __m256d YTv = _mm256_loadu_pd(&YT[i]);
+        __m256d YTv = _mm256_loadu_pd(&Phi[i]);
         __m256d Cpv = _mm256_loadu_pd(&Cp[i]);
         CpMv = _mm256_fmadd_pd(YTv,Cpv,CpMv);
         __m256d Hav = _mm256_loadu_pd(&Ha[i]);
@@ -406,183 +246,129 @@ void Foam::FastChemistryModel<ThermoType>::derivatives
     }
     for(label i = nSpecie_-remain;i<nSpecie_;i++)
     {
-        dYTdt[i] =dYTdt[i]*reaction.W[i]/rhoM;
-        CpM += YT[i]*Cp[i];
-        dTdt -= dYTdt[i]*Ha[i];
+        dPhidt[i] =dPhidt[i]*reaction.W[i]/rhoM;
+        CpM += Phi[i]*Cp[i];
+        dTdt -= dPhidt[i]*Ha[i];
     }
     CpM = CpM + reaction.hsum4(CpMv);
     dTdt = dTdt -(reaction.hsum4(dTdtv));
     dTdt /= CpM;
-    dYTdt[nSpecie_] = dTdt;
-}
-
-
-template<class ThermoType>
-void Foam::FastChemistryModel<ThermoType>::derivativesC
-(
-    const scalar t,
-    const scalarField& __restrict__ CTp,
-    const label li,
-    scalarField& __restrict__ dCTpdt,
-    scalarField& __restrict__ Cp,
-    scalarField& __restrict__ Ha
-) const
-{
-        /*const double T = CTp[nSpecie_];
-        const volScalarField& p0vf = this->thermo().p().oldTime();
-        double p = p0vf[li];
-        
-
-        // Evaluate the concentrations
-        for (label i=0; i<nSpecie_; i ++)
-        {
-            c_[i] = CTp[i];
-        }
-
-        // Evaluate contributions from reactions
-        dCTpdt = Zero;
-
-        //scalarField& ExpGbyRT = YTpWork_[5];
-        //scalarField& Cp = YTpWork_[6];
-        //scalarField& Ha = YTpWork_[7];
-
-        scalarField& ExpGbyRT = Cp;
-
-        reaction.dNdtByV
-        (
-            p,
-            T,
-            c_.data(),
-            dCTpdt.data(),
-            ExpGbyRT.data()
-        );
-
-        reaction.CpHa(T,Cp.data(),Ha.data());
-
-        double rho = 0;
-        double cSum = 0;
-        for (label i = 0; i < nSpecie_; i++)
-        {
-            const double W = reaction.W[i];
-            cSum += c_[i];
-            rho += W*c_[i];
-        }
-        double cp = 0;
-        for (label i=0; i<nSpecie_; i++)
-        {
-            cp += c_[i]*Cp[i];
-        }
-        cp /= rho;
-
-        double dT = 0;
-        for (label i = 0; i < nSpecie_; i++)
-        {
-            const double hi = Ha[i];
-            dT += hi*dCTpdt[i];
-        }
-        dT /= rho*cp;
-
-        dCTpdt[nSpecie_] = -dT;*/
+    dPhidt[nSpecie_] = dTdt;
 }
 
 template<class ThermoType>
 void Foam::FastChemistryModel<ThermoType>::jacobian
 (
     const scalar t,
-    double* __restrict__ YT_,
-    const label li,
-    double* __restrict__ dYTdt,
-    double* __restrict__ Jy
+    const label li,    
+    double* __restrict__ Phi,
+    double* __restrict__ dPhidt,
+    double* __restrict__ Jac
 ) const 
 {
-    forAll(c_, i)
+
+    for(int i = 0; i < this->nSpecie();i++)
     {
-        YT_[i] = max(YT_[i], 0);
+        Phi[i] = std::max(Phi[i], 0.0);
     }
 
-    const double T = YT_[nSpecie_];
+    const double T = Phi[this->nSpecie()];
     const volScalarField& p0vf = this->thermo().p().oldTime();
     double p = p0vf[li];
         
-    double* __restrict__ Jc = YTpYTpWork[0];
-    {size_t size = n_*n_;std::memset(Jc, 0, size * sizeof(double));}
-    {size_t size = n_;std::memset(dYTdt, 0, size * sizeof(double));}
+    double* __restrict__ ddNdtByVdcT = YTpYTpWork[0];
 
-    double* __restrict__ ExpNegGbyRT = YTpWork[3];
+    {
+        size_t size = alignN*(this->nSpecie()+1);
+        std::memset(ddNdtByVdcT, 0, size * sizeof(double));
+    }
+    {
+        size_t size = alignN;
+        std::memset(dPhidt, 0, size * sizeof(double));
+    }
+
+    double* __restrict__ c           = YTpWork[3];
     double* __restrict__ dBdT        = YTpWork[4];
     double* __restrict__ dCpdT       = YTpWork[5];
     double* __restrict__ Cp          = YTpWork[6];
     double* __restrict__ Ha          = YTpWork[7];
     double* __restrict__ WiByrhoM    = YTpWork[8];
-    double* __restrict__ rhoMvj      = YTpWork[10];
+    double* __restrict__ rhoMByRhoi      = YTpWork[10];
        
     reaction.ddNdtByVdcTp
     (
         p,
         T,
-        YT_,
-        c_.data(),
-        dYTdt,
-        ExpNegGbyRT,
+        Phi,
+        c,
+        dPhidt,
         dBdT,
         dCpdT,
         Cp,
         Ha,
-        rhoMvj,
+        rhoMByRhoi,
         WiByrhoM,
-        Jc,
-        true
+        ddNdtByVdcT
     );
-
     unsigned int remain = reaction.nSpecies%4;
     switch (jacobianType_)
     {
         case jacobianType::fast:
-            reaction.FastddYdtdY_Vec(ExpNegGbyRT,Jc,rhoMvj,WiByrhoM,dYTdt,YT_,Jy);
-            reaction.ddYdtdTP_Vec(ExpNegGbyRT,Jc,rhoMvj,WiByrhoM,c_.data(),dYTdt,YT_,Jy);
-            reaction.ddTdtdYT_Vec(ExpNegGbyRT,Jc,rhoMvj,WiByrhoM,Cp,dCpdT,Ha,dYTdt,YT_,Jy);                
-            break;
-        case jacobianType::exact:
         if(remain==0)
         {
-            reaction.ddYdtdY_Vec1_0(Jc,rhoMvj,WiByrhoM,dYTdt,YT_,Jy);
-            reaction.ddYdtdTP_Vec_0(ExpNegGbyRT,Jc,rhoMvj,WiByrhoM,c_.data(),dYTdt,YT_,Jy);
-            reaction.ddTdtdYT_Vec_0(ExpNegGbyRT,Jc,rhoMvj,WiByrhoM,Cp,dCpdT,Ha,dYTdt,YT_,Jy);
+            reaction.FastddYdtdY_Vec0(ddNdtByVdcT,rhoMByRhoi,WiByrhoM,dPhidt,Jac);
+            reaction.ddYdtdTP_Vec_0(ddNdtByVdcT,WiByrhoM,c,dPhidt,Jac);
+            reaction.ddTdtdYT_Vec_0(Cp,dCpdT,Ha,dPhidt,Jac);
         }
         else if(remain==1)
         {
-            reaction.ddYdtdY_Vec1_1(Jc,rhoMvj,WiByrhoM,dYTdt,YT_,Jy);
-            reaction.ddYdtdTP_Vec_1(ExpNegGbyRT,Jc,rhoMvj,WiByrhoM,c_.data(),dYTdt,YT_,Jy);  
-            reaction.ddTdtdYT_Vec_1(ExpNegGbyRT,Jc,rhoMvj,WiByrhoM,Cp,dCpdT,Ha,dYTdt,YT_,Jy);
+            reaction.FastddYdtdY_Vec1(ddNdtByVdcT,rhoMByRhoi,WiByrhoM,dPhidt,Jac);
+            reaction.ddYdtdTP_Vec_1(ddNdtByVdcT,WiByrhoM,c,dPhidt,Jac);  
+            reaction.ddTdtdYT_Vec_1(Cp,dCpdT,Ha,dPhidt,Jac);
         }
         else if(remain==2)
         {
-            reaction.ddYdtdY_Vec1_2(Jc,rhoMvj,WiByrhoM,dYTdt,YT_,Jy);
-            reaction.ddYdtdTP_Vec_2(ExpNegGbyRT,Jc,rhoMvj,WiByrhoM,c_.data(),dYTdt,YT_,Jy);
-            reaction.ddTdtdYT_Vec_2(ExpNegGbyRT,Jc,rhoMvj,WiByrhoM,Cp,dCpdT,Ha,dYTdt,YT_,Jy);
+            reaction.FastddYdtdY_Vec2(ddNdtByVdcT,rhoMByRhoi,WiByrhoM,dPhidt,Jac);
+            reaction.ddYdtdTP_Vec_2(ddNdtByVdcT,WiByrhoM,c,dPhidt,Jac);
+            reaction.ddTdtdYT_Vec_2(Cp,dCpdT,Ha,dPhidt,Jac);
         }
         else
         {
-            reaction.ddYdtdY_Vec1_3(Jc,rhoMvj,WiByrhoM,dYTdt,YT_,Jy);
-            reaction.ddYdtdTP_Vec_3(ExpNegGbyRT,Jc,rhoMvj,WiByrhoM,c_.data(),dYTdt,YT_,Jy); 
-            reaction.ddTdtdYT_Vec_3(ExpNegGbyRT,Jc,rhoMvj,WiByrhoM,Cp,dCpdT,Ha,dYTdt,YT_,Jy);
+            reaction.FastddYdtdY_Vec3(ddNdtByVdcT,rhoMByRhoi,WiByrhoM,dPhidt,Jac);
+            reaction.ddYdtdTP_Vec_3(ddNdtByVdcT,WiByrhoM,c,dPhidt,Jac); 
+            reaction.ddTdtdYT_Vec_3(Cp,dCpdT,Ha,dPhidt,Jac);
+        }
+        break;            
+        case jacobianType::exact:
+        if(remain==0)
+        {
+            reaction.ddYdtdY_Vec1_0(ddNdtByVdcT,rhoMByRhoi,WiByrhoM,dPhidt,Phi,Jac);
+            reaction.ddYdtdTP_Vec_0(ddNdtByVdcT,WiByrhoM,c,dPhidt,Jac);
+            reaction.ddTdtdYT_Vec_0(Cp,dCpdT,Ha,dPhidt,Jac);
+        }
+        else if(remain==1)
+        {
+            reaction.ddYdtdY_Vec1_1(ddNdtByVdcT,rhoMByRhoi,WiByrhoM,dPhidt,Phi,Jac);
+            reaction.ddYdtdTP_Vec_1(ddNdtByVdcT,WiByrhoM,c,dPhidt,Jac);  
+            reaction.ddTdtdYT_Vec_1(Cp,dCpdT,Ha,dPhidt,Jac);
+        }
+        else if(remain==2)
+        {
+            reaction.ddYdtdY_Vec1_2(ddNdtByVdcT,rhoMByRhoi,WiByrhoM,dPhidt,Phi,Jac);
+            reaction.ddYdtdTP_Vec_2(ddNdtByVdcT,WiByrhoM,c,dPhidt,Jac);
+            reaction.ddTdtdYT_Vec_2(Cp,dCpdT,Ha,dPhidt,Jac);
+        }
+        else
+        {
+            reaction.ddYdtdY_Vec1_3(ddNdtByVdcT,rhoMByRhoi,WiByrhoM,dPhidt,Phi,Jac);
+            reaction.ddYdtdTP_Vec_3(ddNdtByVdcT,WiByrhoM,c,dPhidt,Jac); 
+            reaction.ddTdtdYT_Vec_3(Cp,dCpdT,Ha,dPhidt,Jac);
         }
         break;
     }
 }
 
 
-template<class ThermoType>
-void Foam::FastChemistryModel<ThermoType>::jacobian
-(
-    const scalar t,
-    const scalarField& __restrict__ YTp_,
-    const label li,
-    scalarField& __restrict__ dcdt,
-    scalarSquareMatrix& J,
-    int Placeholder
-) const
-{}
 
 
 template<class ThermoType>
@@ -590,6 +376,70 @@ Foam::tmp<Foam::volScalarField>
 Foam::FastChemistryModel<ThermoType>::tc() const
 {
     tmp<volScalarField> ttc
+    (
+        volScalarField::New
+        (
+            "tc",
+            this->mesh(),
+            dimensionedScalar(dimTime, small),
+            extrapolatedCalculatedFvPatchScalarField::typeName
+        )
+    );
+    scalarField& tc = ttc.ref();
+
+    tmp<volScalarField> trho(this->thermo().rho());
+    const scalarField& rho = trho();
+
+    const scalarField& T = this->thermo().T();
+    const scalarField& p = this->thermo().p();
+
+    double* __restrict__ C = this->YTpWork[0];
+
+    if (this->chemistry_)
+    {
+
+        forAll(rho, celli)
+        {
+            const scalar rhoi = rho[celli];
+            const scalar Ti = T[celli];
+            const scalar pi = p[celli];
+
+            for (label i=0; i<nSpecie_; i++)
+            {
+                C[i] = rhoi*Yvf_[i][celli]*reaction.invW[i];
+            }
+
+            // A reaction's rate scale is calculated as it's molar
+            // production rate divided by the total number of moles in the
+            // system.
+            //
+            // The system rate scale is the average of the reactions' rate
+            // scales weighted by the reactions' molar production rates. This
+            // weighting ensures that dominant reactions provide the largest
+            // contribution to the system rate scale.
+            //
+            // The system time scale is then the reciprocal of the system rate
+            // scale.
+            //
+            // Contributions from forward and reverse reaction rates are
+            // handled independently and identically so that reversible
+            // reactions produce the same result as the equivalent pair of
+            // irreversible reactions.
+            scalar sumW = 0, sumWRateByCTot = 0;
+            reaction.Tc(celli,pi,Ti,C,sumW,sumWRateByCTot);
+
+            double sumc = 0;
+            for(int i = 0; i < this->nSpecie();i++)
+            {
+                sumc += C[i];
+            }
+            tc[celli] =
+                sumWRateByCTot == 0 ? vGreat : sumW/sumWRateByCTot*sumc;
+        }
+    }
+    ttc.ref().correctBoundaryConditions();
+    return ttc;
+    /*tmp<volScalarField> ttc
     (
         volScalarField::New
         (
@@ -638,16 +488,39 @@ Foam::FastChemistryModel<ThermoType>::tc() const
             // handled independently and identically so that reversible
             // reactions produce the same result as the equivalent pair of
             // irreversible reactions.
-            scalar sumW = 0, sumWRateByCTot = 0;
-            reaction.Tc(celli,pi,Ti,c_.data(),sumW,sumWRateByCTot);
-            double sumc = sum(c_);
-            tc[celli] =
-                sumWRateByCTot == 0 ? vGreat : sumW/sumWRateByCTot*sumc;
 
+            scalar sumW = 0, sumWRateByCTot = 0;
+            forAll(reactions_, i)
+            {
+                const Reaction<ThermoType>& R = reactions_[i];
+                scalar omegaf, omegar;
+                R.omega(pi, Ti, c_, celli, omegaf, omegar);
+
+                scalar wf = 0;
+                forAll(R.rhs(), s)
+                {
+                    wf += R.rhs()[s].stoichCoeff*omegaf;
+                }
+                sumW += wf;
+                sumWRateByCTot += sqr(wf);
+
+                scalar wr = 0;
+                forAll(R.lhs(), s)
+                {
+                    wr += R.lhs()[s].stoichCoeff*omegar;
+                }
+                sumW += wr;
+                sumWRateByCTot += sqr(wr);
+            }
+
+            tc[celli] =
+                sumWRateByCTot == 0 ? vGreat : sumW/sumWRateByCTot*sum(c_);
         }
     }
+
     ttc.ref().correctBoundaryConditions();
-    return ttc;
+
+    return ttc;*/
 }
 
 
@@ -667,7 +540,6 @@ Foam::FastChemistryModel<ThermoType>::Qdot() const
 
     if (this->chemistry_)
     {
-        reactionEvaluationScope scope(*this);
 
         scalarField& Qdot = tQdot.ref();
 
@@ -675,7 +547,8 @@ Foam::FastChemistryModel<ThermoType>::Qdot() const
         {
             forAll(Qdot, celli)
             {
-                const scalar hi = specieThermos_[i].Hf();
+                //const scalar hi = specieThermos_[i].Hf();
+                const double hi = reaction.Hf[i];
                 Qdot[celli] -= hi*RR_[i][celli];
             }
         }
@@ -725,13 +598,10 @@ void Foam::FastChemistryModel<ThermoType>::calculate()
 
     const scalarField& T = this->thermo().T();
     const scalarField& p = this->thermo().p();
-
-    double* dNdtByV = YTpWork[3];
-    double* ExpGbyRT = YTpWork[4];
-    double* Cp = YTpWork[5];
-    double* Ha = YTpWork[6];
-
-    reactionEvaluationScope scope(*this);
+    double* __restrict__ C = YTpWork[0];
+    double* __restrict__ dNdtByV = YTpWork[1];
+    double* __restrict__ Cp = YTpWork[2];
+    double* __restrict__ Ha = YTpWork[3];
 
     forAll(rho, celli)
     {
@@ -739,16 +609,16 @@ void Foam::FastChemistryModel<ThermoType>::calculate()
         const scalar Ti = T[celli];
         const scalar pi = p[celli];
 
-        for (label i=0; i<nSpecie_; i++)
+        for (int i=0; i<this->nSpecie(); i++)
         {
             const scalar Yi = Yvf_[i][celli];
-            c_[i] = rhoi*Yi/specieThermos_[i].W();
+            C[i] = rhoi*Yi*reaction.invW[i];
         }
-        std::memset(dNdtByV, 0, n_ * sizeof(double));
-        reaction.dNdtByV(pi,Ti,c_.data(),dNdtByV,ExpGbyRT,Cp,Ha);
-        for (label i=0; i<nSpecie_; i++)
+        std::memset(C, 0, this->alignN * sizeof(double)*4);
+        reaction.dNdtByV(pi,Ti,C,dNdtByV,Cp,Ha);
+        for (int i=0; i<this->nSpecie(); i++)
         {
-            RR_[i][celli] = dNdtByV[i]*specieThermos_[i].W();
+            RR_[i][celli] = dNdtByV[i]*reaction.W[i];
         }
     }
     return;

@@ -37,15 +37,10 @@ SourceFiles
 
 
 #include "basicChemistryModel.H"
-#include "ReactionList.H"
-#include "ODESystem.H"
-#include "volFields.H"
-#include "multiComponentMixture.H"
-#include "DynamicField.H"
-#include <vector>
 #include "dataBlock.H"
 #include "simpleDataBlock.H"
 #include "OptReaction.H"
+
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam
@@ -60,43 +55,7 @@ class FastChemistryModel
 :
     public basicChemistryModel
 {
-    // Private classes
-
-        //- Class to define scope of reaction evaluation. Runs pre-evaluate
-        //  hook on all reactions on construction and post-evaluate on
-        //  destruction.
-        class reactionEvaluationScope
-        {
-            const FastChemistryModel<ThermoType>& chemistry_;
-
-        public:
-
-            reactionEvaluationScope
-            (
-                const FastChemistryModel<ThermoType>& chemistry
-            )
-            :
-                chemistry_(chemistry)
-            {
-                /*forAll(chemistry_.reactions_, i)
-                {
-                    chemistry_.reactions_[i].preEvaluate();
-                }*/
-            }
-
-            ~reactionEvaluationScope()
-            {
-                /*forAll(chemistry_.reactions_, i)
-                {
-                    chemistry_.reactions_[i].postEvaluate();
-                }*/
-            }
-        };
-
-
-
     // Private data
-
 
         //- Reference to the field of specie mass fractions
         const PtrList<volScalarField>& Yvf_;
@@ -104,45 +63,24 @@ class FastChemistryModel
         //- Number of species
         label nSpecie_;
 
-        //- Index of default species
-        label defaultIndex;
-
-        //- Size of the ODE system
-        label n_;
-
         //- Type of the Jacobian to be calculated
         const jacobianType jacobianType_;
 
-        //- Reference to the multi component mixture
-        const multiComponentMixture<ThermoType>& mixture_;
-
-        //- Thermodynamic data of the species
-        const PtrList<ThermoType>& specieThermos_;
-
         //- Reactions
-        //const ReactionList<ThermoType> reactions_;
-
-        //- Reactions
-        mutable OptReaction    reaction;
+        mutable OptReaction reaction;
 
         //- List of reaction rate per specie [kg/m^3/s]
         PtrList<volScalarField> RR_;
 
-        //- Temporary mass fraction field
-        mutable scalarField Y_;
-
-        //- Temporary simplified mechanism mass fraction field
-        //DynamicField<scalar> sY_;
-
-        //- Temporary concentration field
-        mutable scalarField c_;
-
-
 public:
         //- Data buffer
-        mutable double*     buffer;             
-        mutable double*     YTpWork[12];            
-        mutable double*     YTpYTpWork[3];             
+        mutable double*     buffer;
+        mutable double*     YTpWork[12];
+        mutable double*     YTpYTpWork[3];
+        
+        //- Size of the ODE system
+        label n_;
+        mutable unsigned int alignN=0;
 
 private:
 
@@ -245,28 +183,20 @@ public:
 
     // Member Functions
 
-        //- Return reference to the mixture
-        inline const multiComponentMixture<ThermoType>& mixture() const;
-
-        //- The reactions
-        inline const PtrList<Reaction<ThermoType>>& reactions() const;
-
-        //- Thermodynamic data of the species
-        inline const PtrList<ThermoType>& specieThermos() const;
-
         //- The number of reactions
         virtual inline label nReaction() const;
 
         //- Calculates the reaction rates
         virtual void calculate();
 
+        // Return the reaction object
+        inline OptReaction&  getReaction() const;
 
         // Chemistry model functions (overriding abstract functions in
         // basicChemistryModel.H)
 
             //- The number of species
             inline virtual label nSpecie() const;
-
 
             //- Return const access to the chemical source terms for specie, i
             inline const volScalarField::Internal& RR
@@ -301,75 +231,24 @@ public:
             //- Return the heat release rate [kg/m/s^3]
             virtual tmp<volScalarField> Qdot() const;
 
-
         // ODE functions (overriding abstract functions in ODE.H)
             virtual void derivatives
             (
                 const scalar t,
-                const scalarField& YTp,
                 const label li,
-                scalarField& dYTpdt
-            ) const;
-
-            virtual void derivatives
-            (
-                const scalar t,
-                const label li,
-                double* __restrict__ YTp,
-                double* __restrict__ dYTpdt,
-                double* __restrict__ Cp,
-                double* __restrict__ Ha,
-                double* __restrict__ ExpGbyRT
-            ) const ;
-
-            virtual void derivativesC
-            (
-                const scalar t,
-                const scalarField& __restrict__ YTp,
-                const label li,
-                scalarField& __restrict__ dCTpdt,
-                scalarField& __restrict__ Cp,
-                scalarField& __restrict__ Ha,
-                scalarField& __restrict__ ExpGbyRT
-            ) const ;            
-        
-            virtual void derivatives
-            (
-                const scalar t,
-                const label li,
-                double* __restrict__ YTp,                
-                double* __restrict__ dYTpdt,
+                double* __restrict__ Phi,
+                double* __restrict__ dPhidt,
                 double* __restrict__ Cp,
                 double* __restrict__ Ha
             ) const ;
 
-            virtual void derivativesC
-            (
-                const scalar t,
-                const scalarField& __restrict__ YTp,
-                const label li,
-                scalarField& __restrict__ dCTpdt,
-                scalarField& __restrict__ Cp,
-                scalarField& __restrict__ Ha
-            ) const ;
-
             virtual void jacobian
             (
                 const scalar t,
-                double* __restrict__ YTp,
-                const label li,
-                double* __restrict__ dYTpdt,
-                double* __restrict__ Jy
-            ) const ;
-
-            virtual void jacobian
-            (
-                const scalar t,
-                const scalarField& __restrict__ YTp,
-                const label li,
-                scalarField& __restrict__ dYTpdt,
-                scalarSquareMatrix& J,
-                int Placeholder
+                const label li,                
+                double* __restrict__ Phi,
+                double* __restrict__ dPhidt,
+                double* __restrict__ Jac
             ) const ;
 
             virtual void solve
@@ -382,15 +261,13 @@ public:
                 scalar& subDeltaT
             ) const = 0;
 
-        // Mechanism reduction access functions
-
-            //- Return true if specie i is active
-            inline bool active(const label i) const;
-
-            //- Set specie i active
-            inline void setActive(const label i);
-
-            inline OptReaction&  getReaction() const{return reaction;}
+            virtual void solve
+            (
+                const label li,
+                double T,
+                double& __restrict__ deltaT,
+                double& __restrict__ subDeltaT
+            ) const = 0;  
 
     // Member Operators
 
