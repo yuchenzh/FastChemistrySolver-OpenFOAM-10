@@ -3,10 +3,10 @@ inline void OptReaction::update_Pow_pByRT_SumVki
     const double T_
 ) const
 {
-    for(auto it = Pow_pByRT_SumVki_.begin(); it!=Pow_pByRT_SumVki_.end();it++)
+    for(auto it = Pow_pByRT_SumVki_I.begin(); it!=Pow_pByRT_SumVki_I.end();it++)
     {
         const int SumVki = it->first;
-        const double val = this->fastPow(this->Pstd/(this->Ru*T_),SumVki);
+        const double val = std::pow(this->Pstd/(this->Ru*T_),SumVki);
         it->second = val;
     }
 }

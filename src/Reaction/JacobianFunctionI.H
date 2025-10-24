@@ -10,8 +10,8 @@ void inline OptReaction::JF11
     const double* __restrict__ dBdT
 )const noexcept
 {
-    const unsigned int sl0 = lhsSpeciesIndex[lhsOffset[i]+0];
-    const unsigned int sr0 = rhsSpeciesIndex[rhsOffset[i]+0];
+    const unsigned int sl0 = this->lhsSpeciesIndex1D[this->lhsOffset[i]+0];
+    const unsigned int sr0 = this->rhsSpeciesIndex1D[this->rhsOffset[i]+0];
 
     double Kr = 0;
     double dKrdT = 0;
@@ -25,10 +25,18 @@ void inline OptReaction::JF11
         invKc = 1.0/Kc;        
         Kr = Kf*invKc;
         dKrdT = (dKfdT*invKc - (Kc > 1.4901171103413047e-8 ? Kr*dKcdTByKc : 0));
-
         const double dCrdC0 = 1;
-        ddNdtByVdcTp[sl0*(this->n_)+sr0] -= (-Kr*dCrdC0);
-        ddNdtByVdcTp[sr0*(this->n_)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl0*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr0] += (-Kr*dCrdC0);
+    }
+    else if(this->isIrreversible[i]==2)
+    {
+        Kr = this->Kf_[i - Ikf[1] + Ikf[9]];
+        dKrdT = this->dKfdT_[i - Ikf[1] + Ikf[9]];
+        invKc = Kr/Kf;
+        const double dCrdC0 = 1;
+        ddNdtByVdcTp[sl0*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr0] += (-Kr*dCrdC0);        
     }
     const double CF = C[sl0];
     const double CR = C[sr0];
@@ -38,18 +46,16 @@ void inline OptReaction::JF11
     dNdtByV[sr0] = dNdtByV[sr0] + q;
 
     const double dqdT = (dKfdT*CF)-(dKrdT*CR);
-    ddNdtByVdcTp[sl0*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sr0*(this->n_)+this->nSpecies] += dqdT;
+    ddNdtByVdcTp[sl0*(this->alignN)+(this->nSpecies)] -= dqdT;
+    ddNdtByVdcTp[sr0*(this->alignN)+(this->nSpecies)] += dqdT;
 
     const double dCfdC0 = 1;
-    ddNdtByVdcTp[sl0*(this->n_)+sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sr0*(this->n_)+sl0] += Kf*dCfdC0;
+    ddNdtByVdcTp[sl0*(this->alignN)+sl0] -= Kf*dCfdC0;
+    ddNdtByVdcTp[sr0*(this->alignN)+sl0] += Kf*dCfdC0;
 
-    if(i>=this->n_Arrhenius + this->n_NonEquilibriumReversibleArrhenius && i <this->nReactions-this->n_PlogReaction)
-    {
-        double* const* __restrict__ ArrRes = this->ArrPtr.data();        
-        const unsigned int k = i - this->n_Arrhenius - this->n_NonEquilibriumReversibleArrhenius;
-        unsigned int remain = this->nSpecies%4;
+    if(i>=this->Ikf[2] && i <this->Ikf[6])
+    { 
+        const unsigned int k = i - this->Ikf[2];
 
         __m256d dKfdC = _mm256_set1_pd(this->dKfdC_[k]);
         __m256d CF_ = _mm256_set1_pd(CF);            
@@ -57,166 +63,21 @@ void inline OptReaction::JF11
         double dKrdC = 0;
         dKrdC = (this->dKfdC_[k]*invKc);
         __m256d dKrdC_ = _mm256_set1_pd(dKrdC);
-        for(unsigned int j = 0; j < this->nSpecies-remain;j=j+4)
+        for(unsigned int j = 0; j < this->AlignSpecies;j=j+4)
         {
-            unsigned int j0 = j+0;
-            unsigned int j1 = j+1;
-            unsigned int j2 = j+2;
-            unsigned int j3 = j+3;
-            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*nSpecies+j0]);
+            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*this->AlignSpecies+j]);
             __m256d WdMdC = _mm256_mul_pd(_mm256_mul_pd(dKrdC_,dMdC),CR_);
             WdMdC = _mm256_fmsub_pd(_mm256_mul_pd(dKfdC,dMdC),CF_,WdMdC);
-            _mm256_storeu_pd(&ArrRes[0][0],WdMdC);
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += ArrRes[0][0];
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += ArrRes[0][1];
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += ArrRes[0][2];
-            ddNdtByVdcTp[sl0*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sr0*(this->n_)+j3] += ArrRes[0][3];
-        } 
-        if(remain==1)
-        {
-            unsigned int j = this->nSpecies-1;
-            const double WdMdC = this->dKfdC_[k]*this->dMdC(k,j)*CF - dKrdC*this->dMdC(k,j)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sr0*(this->n_)+j] += WdMdC;
-        }
-        else if(remain==2)
-        {
-            unsigned int j0 = this->nSpecies-2;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;
-            unsigned int j1 = this->nSpecies-2+1;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;
-        }
-        else if(remain ==3)
-        {
-            unsigned int j0 = this->nSpecies-3;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;
-            unsigned int j1 = this->nSpecies-2;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;   
-            unsigned int j2 = this->nSpecies-1;
-            double WdMdC2 = this->dKfdC_[k]*this->dMdC(k,j2)*CF - dKrdC*this->dMdC(k,j2)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= WdMdC2;
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += WdMdC2;    
-        }      
+
+            __m256d sl0v = _mm256_loadu_pd(&ddNdtByVdcTp[sl0*(this->alignN)+j]);
+            __m256d sr0v = _mm256_loadu_pd(&ddNdtByVdcTp[sr0*(this->alignN)+j]);            
+            sl0v = _mm256_sub_pd(sl0v,WdMdC);
+            sr0v = _mm256_add_pd(sr0v,WdMdC);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sl0*(this->alignN)+j],sl0v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sr0*(this->alignN)+j],sr0v);                
+        }   
     }
 }   
-void inline OptReaction::JF11
-(
-    unsigned int i,
-    double Kf,
-    double dKfdT,
-    const double* __restrict__ C,
-    double* __restrict__ dNdtByV,
-    double* __restrict__ ddNdtByVdcTp
-)const noexcept
-{
-    const unsigned int sl0 = lhsSpeciesIndex[lhsOffset[i]+0];
-    const unsigned int sr0 = rhsSpeciesIndex[rhsOffset[i]+0];
-    double Kr = 0;
-    double dKrdT = 0;
-
-    Kr = this->Kf_[i - Ikf[1] + Ikf[9]];
-    dKrdT = this->dKfdT_[i - Ikf[1] + Ikf[9]];
-
-    const double dCrdC0 = 1;
-    ddNdtByVdcTp[sl0*(this->n_)+sr0] -= (-Kr*dCrdC0);
-    ddNdtByVdcTp[sr0*(this->n_)+sr0] += (-Kr*dCrdC0); 
-
-    const double CF = C[sl0];
-    const double CR = C[sr0];
-
-    const double q = (Kf*CF) - (Kr*CR);
-    dNdtByV[sl0] = dNdtByV[sl0] - q; 
-    dNdtByV[sr0] = dNdtByV[sr0] + q;
-
-    const double dqdT = (dKfdT*CF)-(dKrdT*CR);
-    ddNdtByVdcTp[sl0*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sr0*(this->n_)+this->nSpecies] += dqdT;
-
-    const double dCfdC0 = 1;
-    ddNdtByVdcTp[sl0*(this->n_)+sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sr0*(this->n_)+sl0] += Kf*dCfdC0;
-
-    if(i>=this->n_Arrhenius + this->n_NonEquilibriumReversibleArrhenius && i <this->nReactions-this->n_PlogReaction)
-    {
-        double* const* __restrict__ ArrRes = this->ArrPtr.data();
-        const unsigned int k = i - this->n_Arrhenius - this->n_NonEquilibriumReversibleArrhenius;
-        unsigned int remain = this->nSpecies%4;
-
-        __m256d dKfdC = _mm256_set1_pd(this->dKfdC_[k]);
-        __m256d CF_ = _mm256_set1_pd(CF);            
-        __m256d CR_ = _mm256_set1_pd(CR);
-        double dKrdC = 0;
-
-        dKrdC = (this->dKfdC_[Itbr[4]+k]);
-        __m256d dKrdC_ = _mm256_set1_pd(dKrdC);
-        for(unsigned int j = 0; j < this->nSpecies-remain;j=j+4)
-        {
-            unsigned int j0 = j+0;
-            unsigned int j1 = j+1;
-            unsigned int j2 = j+2;
-            unsigned int j3 = j+3;
-
-            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*nSpecies+j0]);
-
-            __m256d WdMdC = _mm256_mul_pd(_mm256_mul_pd(dKrdC_,dMdC),CR_);
-            WdMdC = _mm256_fmsub_pd(_mm256_mul_pd(dKfdC,dMdC),CF_,WdMdC);
-            _mm256_storeu_pd(&ArrRes[0][0],WdMdC);
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += ArrRes[0][0];
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += ArrRes[0][1];
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += ArrRes[0][2];
-            ddNdtByVdcTp[sl0*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sr0*(this->n_)+j3] += ArrRes[0][3];
-        } 
-        if(remain==1)
-        {
-            unsigned int j = this->nSpecies-1;
-            const double WdMdC = this->dKfdC_[k]*this->dMdC(k,j)*CF - dKrdC*this->dMdC(k,j)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sr0*(this->n_)+j] += WdMdC;
-        }
-        else if(remain==2)
-        {
-            unsigned int j0 = this->nSpecies-2;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;
-            unsigned int j1 = this->nSpecies-2+1;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;
-        }
-        else if(remain ==3)
-        {
-            unsigned int j0 = this->nSpecies-3;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;
-            unsigned int j1 = this->nSpecies-2;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;   
-            unsigned int j2 = this->nSpecies-1;
-            double WdMdC2 = this->dKfdC_[k]*this->dMdC(k,j2)*CF - dKrdC*this->dMdC(k,j2)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= WdMdC2;
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += WdMdC2;    
-        }      
-    }
-}          
 void inline OptReaction::JF12
 (
     unsigned int i,
@@ -229,9 +90,9 @@ void inline OptReaction::JF12
     const double* __restrict__ dBdT
 )const noexcept
 {
-    const unsigned int sl0 = lhsSpeciesIndex[lhsOffset[i]+0];
-    const unsigned int sr0 = rhsSpeciesIndex[rhsOffset[i]+0];
-    const unsigned int sr1 = rhsSpeciesIndex[rhsOffset[i]+1];
+    const unsigned int sl0 = lhsSpeciesIndex1D[lhsOffset[i]+0];
+    const unsigned int sr0 = rhsSpeciesIndex1D[rhsOffset[i]+0];
+    const unsigned int sr1 = rhsSpeciesIndex1D[rhsOffset[i]+1];
 
     double Kr = 0;
     double dKrdT = 0;
@@ -249,12 +110,26 @@ void inline OptReaction::JF12
 
         const double dCrdC0 = C[sr1];
         const double dCrdC1 = C[sr0];     
-        ddNdtByVdcTp[sl0*(this->n_)+sr0] -= (-Kr*dCrdC0);
-        ddNdtByVdcTp[sr0*(this->n_)+sr0] += (-Kr*dCrdC0);
-        ddNdtByVdcTp[sr1*(this->n_)+sr0] += (-Kr*dCrdC0);
-        ddNdtByVdcTp[sl0*(this->n_)+sr1] -= (-Kr*dCrdC1);
-        ddNdtByVdcTp[sr0*(this->n_)+sr1] += (-Kr*dCrdC1);
-        ddNdtByVdcTp[sr1*(this->n_)+sr1] += (-Kr*dCrdC1);    
+        ddNdtByVdcTp[sl0*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr1*(this->alignN)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl0*(this->alignN)+sr1] -= (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr1] += (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr1*(this->alignN)+sr1] += (-Kr*dCrdC1);
+    }
+    else if(this->isIrreversible[i]==2)
+    {
+        Kr = this->Kf_[i - Ikf[1] + Ikf[9]];
+        dKrdT = this->dKfdT_[i - Ikf[1] + Ikf[9]];
+        invKc = Kr/Kf;
+        const double dCrdC0 = C[sr1];
+        const double dCrdC1 = C[sr0];     
+        ddNdtByVdcTp[sl0*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr1*(this->alignN)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl0*(this->alignN)+sr1] -= (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr1] += (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr1*(this->alignN)+sr1] += (-Kr*dCrdC1);
     }
 
 
@@ -267,20 +142,18 @@ void inline OptReaction::JF12
     dNdtByV[sr1] = dNdtByV[sr1] + q;   
 
     const double dqdT = (dKfdT*CF)-(dKrdT*CR);
-    ddNdtByVdcTp[sl0*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sr0*(this->n_)+this->nSpecies] += dqdT;
-    ddNdtByVdcTp[sr1*(this->n_)+this->nSpecies] += dqdT;
+    ddNdtByVdcTp[sl0*(this->alignN)+(this->nSpecies)] -= dqdT;
+    ddNdtByVdcTp[sr0*(this->alignN)+(this->nSpecies)] += dqdT;
+    ddNdtByVdcTp[sr1*(this->alignN)+(this->nSpecies)] += dqdT;
 
     const double dCfdC0 = 1; 
-    ddNdtByVdcTp[sl0*(this->n_)+sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sr0*(this->n_)+sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sr1*(this->n_)+sl0] += Kf*dCfdC0;
+    ddNdtByVdcTp[sl0*(this->alignN)+sl0] -= Kf*dCfdC0;
+    ddNdtByVdcTp[sr0*(this->alignN)+sl0] += Kf*dCfdC0;
+    ddNdtByVdcTp[sr1*(this->alignN)+sl0] += Kf*dCfdC0;
 
-    if(i>=this->n_Arrhenius + this->n_NonEquilibriumReversibleArrhenius && i <this->nReactions-this->n_PlogReaction)
-    {
-        double* const* __restrict__ ArrRes = this->ArrPtr.data();
-        const unsigned int k = i - this->n_Arrhenius - this->n_NonEquilibriumReversibleArrhenius;
-        unsigned int remain = this->nSpecies%4;
+    if(i>=this->Ikf[2] && i <this->Ikf[6])
+    { 
+        const unsigned int k = i - this->Ikf[2];
 
         __m256d dKfdC = _mm256_set1_pd(this->dKfdC_[k]);
         __m256d CF_ = _mm256_set1_pd(CF);            
@@ -290,223 +163,26 @@ void inline OptReaction::JF12
         dKrdC = (this->dKfdC_[k]*invKc);
         __m256d dKrdC_ = _mm256_set1_pd(dKrdC);
 
-        for(unsigned int j = 0; j < this->nSpecies-remain;j=j+4)
+        for(unsigned int j = 0; j < this->AlignSpecies;j=j+4)
         {
-            unsigned int j0 = j+0;
-            unsigned int j1 = j+1;
-            unsigned int j2 = j+2;
-            unsigned int j3 = j+3;
-
-            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*nSpecies+j0]);
+            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*this->AlignSpecies+j]);
 
             __m256d WdMdC = _mm256_mul_pd(_mm256_mul_pd(dKrdC_,dMdC),CR_);
             WdMdC = _mm256_fmsub_pd(_mm256_mul_pd(dKfdC,dMdC),CF_,WdMdC);
-            _mm256_storeu_pd(&ArrRes[0][0],WdMdC);
 
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += ArrRes[0][0];
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += ArrRes[0][0];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += ArrRes[0][1];
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += ArrRes[0][1];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += ArrRes[0][2];
-            ddNdtByVdcTp[sr1*(this->n_)+j2] += ArrRes[0][2];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sr0*(this->n_)+j3] += ArrRes[0][3];
-            ddNdtByVdcTp[sr1*(this->n_)+j3] += ArrRes[0][3];
-
+            __m256d sl0v = _mm256_loadu_pd(&ddNdtByVdcTp[sl0*(this->alignN)+j]);
+            __m256d sr0v = _mm256_loadu_pd(&ddNdtByVdcTp[sr0*(this->alignN)+j]);
+            __m256d sr1v = _mm256_loadu_pd(&ddNdtByVdcTp[sr1*(this->alignN)+j]);
+            sl0v = _mm256_sub_pd(sl0v,WdMdC);
+            sr0v = _mm256_add_pd(sr0v,WdMdC);
+            sr1v = _mm256_add_pd(sr1v,WdMdC);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sl0*(this->alignN)+j],sl0v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sr0*(this->alignN)+j],sr0v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sr1*(this->alignN)+j],sr1v);
         } 
-        if(remain==1)
-        {
-            unsigned int j = this->nSpecies-1;
-            const double WdMdC = this->dKfdC_[k]*this->dMdC(k,j)*CF - dKrdC*this->dMdC(k,j)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j] -= WdMdC;
-
-            ddNdtByVdcTp[sr0*(this->n_)+j] += WdMdC;
-            ddNdtByVdcTp[sr1*(this->n_)+j] += WdMdC;
-      
-        }
-        else if(remain==2)
-        {
-            unsigned int j0 = this->nSpecies-2;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += WdMdC0;
-
- 
-            unsigned int j1 = this->nSpecies-1;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += WdMdC1;
-     
-        }
-        else if(remain ==3)
-        {
-            unsigned int j0 = this->nSpecies-3;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += WdMdC0;
-
-            unsigned int j1 = this->nSpecies-2;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;   
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += WdMdC1;
-
-            unsigned int j2 = this->nSpecies-1;
-            double WdMdC2 = this->dKfdC_[k]*this->dMdC(k,j2)*CF - dKrdC*this->dMdC(k,j2)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= WdMdC2;
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += WdMdC2;    
-            ddNdtByVdcTp[sr1*(this->n_)+j2] += WdMdC2;  
-        }      
     }
 }             
-void inline OptReaction::JF12
-(
-    unsigned int i,
-    double Kf,
-    double dKfdT,
-    const double* __restrict__ C,
-    double* __restrict__ dNdtByV,
-    double* __restrict__ ddNdtByVdcTp
-)const noexcept
-{
-    const unsigned int sl0 = lhsSpeciesIndex[lhsOffset[i]+0];
-    const unsigned int sr0 = rhsSpeciesIndex[rhsOffset[i]+0];
-    const unsigned int sr1 = rhsSpeciesIndex[rhsOffset[i]+1];
 
-    double Kr = 0;
-    double dKrdT = 0;
-
-    Kr = this->Kf_[i - Ikf[1] + Ikf[9]];
-    dKrdT = this->dKfdT_[i - Ikf[1] + Ikf[9]];
-
-    const double dCrdC0 = C[sr1];
-    const double dCrdC1 = C[sr0];     
-    ddNdtByVdcTp[sl0*(this->n_)+sr0] -= (-Kr*dCrdC0);
-    ddNdtByVdcTp[sr0*(this->n_)+sr0] += (-Kr*dCrdC0);
-    ddNdtByVdcTp[sr1*(this->n_)+sr0] += (-Kr*dCrdC0);
-    ddNdtByVdcTp[sl0*(this->n_)+sr1] -= (-Kr*dCrdC1);
-    ddNdtByVdcTp[sr0*(this->n_)+sr1] += (-Kr*dCrdC1);
-    ddNdtByVdcTp[sr1*(this->n_)+sr1] += (-Kr*dCrdC1);  
-
-    const double CF = C[sl0];
-    const double CR = C[sr0]*C[sr1];
-    const double dCfdC0 = 1;
-
-    const double q = (Kf*CF) - (Kr*CR);
-    dNdtByV[sl0] = dNdtByV[sl0] - q; 
-    dNdtByV[sr0] = dNdtByV[sr0] + q;
-    dNdtByV[sr1] = dNdtByV[sr1] + q;
-
-    const double dqdT = (dKfdT*CF)-(dKrdT*CR);
-    ddNdtByVdcTp[sl0*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sr0*(this->n_)+this->nSpecies] += dqdT;
-    ddNdtByVdcTp[sr1*(this->n_)+this->nSpecies] += dqdT;
-    
-    ddNdtByVdcTp[sl0*(this->n_)+sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sr0*(this->n_)+sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sr1*(this->n_)+sl0] += Kf*dCfdC0;
-
-    if(i>=this->n_Arrhenius + this->n_NonEquilibriumReversibleArrhenius && i <this->nReactions-this->n_PlogReaction)
-    {
-        double* const* __restrict__ ArrRes = this->ArrPtr.data();
-        const unsigned int k = i - this->n_Arrhenius - this->n_NonEquilibriumReversibleArrhenius;
-        unsigned int remain = this->nSpecies%4;
-
-        __m256d dKfdC = _mm256_set1_pd(this->dKfdC_[k]);
-        __m256d CF_ = _mm256_set1_pd(CF);            
-        __m256d CR_ = _mm256_set1_pd(CR);
-        double dKrdC = 0;
-
-        dKrdC = (this->dKfdC_[Itbr[4]+k]);
-        __m256d dKrdC_ = _mm256_set1_pd(dKrdC);
-
-        for(unsigned int j = 0; j < this->nSpecies-remain;j=j+4)
-        {
-            unsigned int j0 = j+0;
-            unsigned int j1 = j+1;
-            unsigned int j2 = j+2;
-            unsigned int j3 = j+3;
-
-            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*nSpecies+j0]);
-
-            __m256d WdMdC = _mm256_mul_pd(_mm256_mul_pd(dKrdC_,dMdC),CR_);
-            WdMdC = _mm256_fmsub_pd(_mm256_mul_pd(dKfdC,dMdC),CF_,WdMdC);
-            _mm256_storeu_pd(&ArrRes[0][0],WdMdC);
-
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += ArrRes[0][0];
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += ArrRes[0][0];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += ArrRes[0][1];
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += ArrRes[0][1];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += ArrRes[0][2];
-            ddNdtByVdcTp[sr1*(this->n_)+j2] += ArrRes[0][2];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sr0*(this->n_)+j3] += ArrRes[0][3];
-            ddNdtByVdcTp[sr1*(this->n_)+j3] += ArrRes[0][3];
-
-        } 
-        if(remain==1)
-        {
-            unsigned int j = this->nSpecies-1;
-            const double WdMdC = this->dKfdC_[k]*this->dMdC(k,j)*CF - dKrdC*this->dMdC(k,j)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j] -= WdMdC;
-
-            ddNdtByVdcTp[sr0*(this->n_)+j] += WdMdC;
-            ddNdtByVdcTp[sr1*(this->n_)+j] += WdMdC;
-      
-        }
-        else if(remain==2)
-        {
-            unsigned int j0 = this->nSpecies-2;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += WdMdC0;
-
- 
-            unsigned int j1 = this->nSpecies-1;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += WdMdC1;
-     
-        }
-        else if(remain ==3)
-        {
-            unsigned int j0 = this->nSpecies-3;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += WdMdC0;
-
-            unsigned int j1 = this->nSpecies-2;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;   
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += WdMdC1;
-
-            unsigned int j2 = this->nSpecies-1;
-            double WdMdC2 = this->dKfdC_[k]*this->dMdC(k,j2)*CF - dKrdC*this->dMdC(k,j2)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= WdMdC2;
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += WdMdC2;    
-            ddNdtByVdcTp[sr1*(this->n_)+j2] += WdMdC2;  
-        }      
-    }
-}             
 
 void inline OptReaction::JF13
 (
@@ -520,10 +196,11 @@ void inline OptReaction::JF13
     const double* __restrict__ dBdT
 )const noexcept
 {
-    const unsigned int sl0 = lhsSpeciesIndex[lhsOffset[i]+0];
-    const unsigned int sr0 = rhsSpeciesIndex[rhsOffset[i]+0];
-    const unsigned int sr1 = rhsSpeciesIndex[rhsOffset[i]+1];
-    const unsigned int sr2 = rhsSpeciesIndex[rhsOffset[i]+2];
+
+    const unsigned int sl0 = lhsSpeciesIndex1D[lhsOffset[i]+0];
+    const unsigned int sr0 = rhsSpeciesIndex1D[rhsOffset[i]+0];
+    const unsigned int sr1 = rhsSpeciesIndex1D[rhsOffset[i]+1];
+    const unsigned int sr2 = rhsSpeciesIndex1D[rhsOffset[i]+2];
 
     double Kr = 0;
     double dKrdT = 0;
@@ -543,19 +220,40 @@ void inline OptReaction::JF13
         const double dCrdC0 = C[sr1]*C[sr2];
         const double dCrdC1 = C[sr0]*C[sr2];
         const double dCrdC2 = C[sr0]*C[sr1];
-        ddNdtByVdcTp[sl0*(this->n_)+sr0] -= (-Kr*dCrdC0);
-        ddNdtByVdcTp[sr0*(this->n_)+sr0] += (-Kr*dCrdC0);
-        ddNdtByVdcTp[sr1*(this->n_)+sr0] += (-Kr*dCrdC0);
-        ddNdtByVdcTp[sr2*(this->n_)+sr0] += (-Kr*dCrdC0);
-        ddNdtByVdcTp[sl0*(this->n_)+sr1] -= (-Kr*dCrdC1);
-        ddNdtByVdcTp[sr0*(this->n_)+sr1] += (-Kr*dCrdC1);
-        ddNdtByVdcTp[sr1*(this->n_)+sr1] += (-Kr*dCrdC1);
-        ddNdtByVdcTp[sr2*(this->n_)+sr1] += (-Kr*dCrdC1);
-        ddNdtByVdcTp[sl0*(this->n_)+sr2] -= (-Kr*dCrdC2);
-        ddNdtByVdcTp[sr0*(this->n_)+sr2] += (-Kr*dCrdC2);
-        ddNdtByVdcTp[sr1*(this->n_)+sr2] += (-Kr*dCrdC2);
-        ddNdtByVdcTp[sr2*(this->n_)+sr2] += (-Kr*dCrdC2);
-            
+        ddNdtByVdcTp[sl0*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr1*(this->alignN)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr2*(this->alignN)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl0*(this->alignN)+sr1] -= (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr1] += (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr1*(this->alignN)+sr1] += (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr2*(this->alignN)+sr1] += (-Kr*dCrdC1);
+        ddNdtByVdcTp[sl0*(this->alignN)+sr2] -= (-Kr*dCrdC2);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr2] += (-Kr*dCrdC2);
+        ddNdtByVdcTp[sr1*(this->alignN)+sr2] += (-Kr*dCrdC2);
+        ddNdtByVdcTp[sr2*(this->alignN)+sr2] += (-Kr*dCrdC2);
+
+    }
+    else if(this->isIrreversible[i]==2)
+    {
+        Kr = this->Kf_[i - Ikf[1] + Ikf[9]];
+        dKrdT = this->dKfdT_[i - Ikf[1] + Ikf[9]];
+        invKc = Kr/Kf;
+        const double dCrdC0 = C[sr1]*C[sr2];
+        const double dCrdC1 = C[sr0]*C[sr2];
+        const double dCrdC2 = C[sr0]*C[sr1];
+        ddNdtByVdcTp[sl0*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr1*(this->alignN)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr2*(this->alignN)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl0*(this->alignN)+sr1] -= (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr1] += (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr1*(this->alignN)+sr1] += (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr2*(this->alignN)+sr1] += (-Kr*dCrdC1);
+        ddNdtByVdcTp[sl0*(this->alignN)+sr2] -= (-Kr*dCrdC2);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr2] += (-Kr*dCrdC2);
+        ddNdtByVdcTp[sr1*(this->alignN)+sr2] += (-Kr*dCrdC2);
+        ddNdtByVdcTp[sr2*(this->alignN)+sr2] += (-Kr*dCrdC2);
     }
     const double CF = C[sl0];
     const double CR = C[sr0]*C[sr1]*C[sr2];
@@ -567,278 +265,49 @@ void inline OptReaction::JF13
     dNdtByV[sr2] = dNdtByV[sr2] + q;
 
     const double dqdT = (dKfdT*CF)-(dKrdT*CR);
-    ddNdtByVdcTp[sl0*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sr0*(this->n_)+this->nSpecies] += dqdT;
-    ddNdtByVdcTp[sr1*(this->n_)+this->nSpecies] += dqdT;
-    ddNdtByVdcTp[sr2*(this->n_)+this->nSpecies] += dqdT;
+    ddNdtByVdcTp[sl0*(this->alignN)+(this->nSpecies)] -= dqdT;
+    ddNdtByVdcTp[sr0*(this->alignN)+(this->nSpecies)] += dqdT;
+    ddNdtByVdcTp[sr1*(this->alignN)+(this->nSpecies)] += dqdT;
+    ddNdtByVdcTp[sr2*(this->alignN)+(this->nSpecies)] += dqdT;
 
     const double dCfdC0 = 1;
-    ddNdtByVdcTp[sl0*(this->n_)+sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sr0*(this->n_)+sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sr1*(this->n_)+sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sr2*(this->n_)+sl0] += Kf*dCfdC0;
+    ddNdtByVdcTp[sl0*(this->alignN)+sl0] -= Kf*dCfdC0;
+    ddNdtByVdcTp[sr0*(this->alignN)+sl0] += Kf*dCfdC0;
+    ddNdtByVdcTp[sr1*(this->alignN)+sl0] += Kf*dCfdC0;
+    ddNdtByVdcTp[sr2*(this->alignN)+sl0] += Kf*dCfdC0;
 
-    if(i>=this->n_Arrhenius + this->n_NonEquilibriumReversibleArrhenius && i <this->nReactions-this->n_PlogReaction)
-    {
-        double* const* __restrict__ ArrRes = this->ArrPtr.data();
-        const unsigned int k = i - this->n_Arrhenius - this->n_NonEquilibriumReversibleArrhenius;
-        unsigned int remain = this->nSpecies%4;
+    if(i>=this->Ikf[2] && i <this->Ikf[6])
+    { 
+        const unsigned int k = i - this->Ikf[2];
 
         __m256d dKfdC = _mm256_set1_pd(this->dKfdC_[k]);
         __m256d CF_ = _mm256_set1_pd(CF);            
         __m256d CR_ = _mm256_set1_pd(CR);
         double dKrdC = 0;
-
 
         dKrdC = (this->dKfdC_[k]*invKc);
         __m256d dKrdC_ = _mm256_set1_pd(dKrdC);
 
-        for(unsigned int j = 0; j < this->nSpecies-remain;j=j+4)
+        for(unsigned int j = 0; j < this->AlignSpecies;j=j+4)
         {
-            
-            unsigned int j0 = j+0;
-            unsigned int j1 = j+1;
-            unsigned int j2 = j+2;
-            unsigned int j3 = j+3;
-
-            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*nSpecies+j0]);
+            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*this->AlignSpecies+j]);
 
             __m256d WdMdC = _mm256_mul_pd(_mm256_mul_pd(dKrdC_,dMdC),CR_);
             WdMdC = _mm256_fmsub_pd(_mm256_mul_pd(dKfdC,dMdC),CF_,WdMdC);
-            _mm256_storeu_pd(&ArrRes[0][0],WdMdC);
 
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += ArrRes[0][0];
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += ArrRes[0][0];
-            ddNdtByVdcTp[sr2*(this->n_)+j0] += ArrRes[0][0]; 
-
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += ArrRes[0][1];
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += ArrRes[0][1];
-            ddNdtByVdcTp[sr2*(this->n_)+j1] += ArrRes[0][1];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += ArrRes[0][2];
-            ddNdtByVdcTp[sr1*(this->n_)+j2] += ArrRes[0][2];
-            ddNdtByVdcTp[sr2*(this->n_)+j2] += ArrRes[0][2];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sr0*(this->n_)+j3] += ArrRes[0][3];
-            ddNdtByVdcTp[sr1*(this->n_)+j3] += ArrRes[0][3];
-            ddNdtByVdcTp[sr2*(this->n_)+j3] += ArrRes[0][3];
+            __m256d sl0v = _mm256_loadu_pd(&ddNdtByVdcTp[sl0*(this->alignN)+j]);
+            __m256d sr0v = _mm256_loadu_pd(&ddNdtByVdcTp[sr0*(this->alignN)+j]);
+            __m256d sr1v = _mm256_loadu_pd(&ddNdtByVdcTp[sr1*(this->alignN)+j]);
+            __m256d sr2v = _mm256_loadu_pd(&ddNdtByVdcTp[sr2*(this->alignN)+j]);
+            sl0v = _mm256_sub_pd(sl0v,WdMdC);
+            sr0v = _mm256_add_pd(sr0v,WdMdC);
+            sr1v = _mm256_add_pd(sr1v,WdMdC);
+            sr2v = _mm256_add_pd(sr2v,WdMdC);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sl0*(this->alignN)+j],sl0v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sr0*(this->alignN)+j],sr0v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sr1*(this->alignN)+j],sr1v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sr2*(this->alignN)+j],sr2v);
         } 
-        if(remain==1)
-        {
-            unsigned int j = this->nSpecies-1;
-            const double WdMdC = this->dKfdC_[k]*this->dMdC(k,j)*CF - dKrdC*this->dMdC(k,j)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j] -= WdMdC;
-
-            ddNdtByVdcTp[sr0*(this->n_)+j] += WdMdC;
-            ddNdtByVdcTp[sr1*(this->n_)+j] += WdMdC;
-            ddNdtByVdcTp[sr2*(this->n_)+j] += WdMdC;        
-        }
-        else if(remain==2)
-        {
-            unsigned int j0 = this->nSpecies-2;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr2*(this->n_)+j0] += WdMdC0;  
-
-            unsigned int j1 = this->nSpecies-1;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr2*(this->n_)+j1] += WdMdC1;      
-        }
-        else if(remain ==3)
-        {
-            unsigned int j0 = this->nSpecies-3;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr2*(this->n_)+j0] += WdMdC0;  
-
-            unsigned int j1 = this->nSpecies-2;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr2*(this->n_)+j1] += WdMdC1;   
-
-            unsigned int j2 = this->nSpecies-1;
-            double WdMdC2 = this->dKfdC_[k]*this->dMdC(k,j2)*CF - dKrdC*this->dMdC(k,j2)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= WdMdC2;
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += WdMdC2;
-            ddNdtByVdcTp[sr1*(this->n_)+j2] += WdMdC2;
-            ddNdtByVdcTp[sr2*(this->n_)+j2] += WdMdC2;   
-
-        }      
-
-    }
-}            
-
-void inline OptReaction::JF13
-(
-    unsigned int i,
-    double Kf,
-    double dKfdT,
-    const double* __restrict__ C,
-    double* __restrict__ dNdtByV,
-    double* __restrict__ ddNdtByVdcTp
-)const noexcept
-{
-    const unsigned int sl0 = lhsSpeciesIndex[lhsOffset[i]+0];
-    const unsigned int sr0 = rhsSpeciesIndex[rhsOffset[i]+0];
-    const unsigned int sr1 = rhsSpeciesIndex[rhsOffset[i]+1];
-    const unsigned int sr2 = rhsSpeciesIndex[rhsOffset[i]+2];
-    
-    double Kr = 0;
-    double dKrdT = 0;
-
-    Kr = this->Kf_[i - Ikf[1] + Ikf[9]];
-    dKrdT = this->dKfdT_[i - Ikf[1] + Ikf[9]];
-
-    const double dCrdC0 = C[sr1]*C[sr2];
-    const double dCrdC1 = C[sr0]*C[sr2];
-    const double dCrdC2 = C[sr0]*C[sr1];
-    ddNdtByVdcTp[sl0*(this->n_)+sr0] -= (-Kr*dCrdC0);
-    ddNdtByVdcTp[sr0*(this->n_)+sr0] += (-Kr*dCrdC0);
-    ddNdtByVdcTp[sr1*(this->n_)+sr0] += (-Kr*dCrdC0);
-    ddNdtByVdcTp[sr2*(this->n_)+sr0] += (-Kr*dCrdC0);
-    ddNdtByVdcTp[sl0*(this->n_)+sr1] -= (-Kr*dCrdC1);
-    ddNdtByVdcTp[sr0*(this->n_)+sr1] += (-Kr*dCrdC1);
-    ddNdtByVdcTp[sr1*(this->n_)+sr1] += (-Kr*dCrdC1);
-    ddNdtByVdcTp[sr2*(this->n_)+sr1] += (-Kr*dCrdC1);
-    ddNdtByVdcTp[sl0*(this->n_)+sr2] -= (-Kr*dCrdC2);
-    ddNdtByVdcTp[sr0*(this->n_)+sr2] += (-Kr*dCrdC2);
-    ddNdtByVdcTp[sr1*(this->n_)+sr2] += (-Kr*dCrdC2);
-    ddNdtByVdcTp[sr2*(this->n_)+sr2] += (-Kr*dCrdC2);   
-    
-    const double CF = C[sl0];
-    const double CR = C[sr0]*C[sr1]*C[sr2];
- 
-    const double q = (Kf*CF) - (Kr*CR);
-    dNdtByV[sl0] = dNdtByV[sl0] - q;
-    dNdtByV[sr0] = dNdtByV[sr0] + q;
-    dNdtByV[sr1] = dNdtByV[sr1] + q;
-    dNdtByV[sr2] = dNdtByV[sr2] + q;
-
-    const double dqdT = (dKfdT*CF)-(dKrdT*CR);
-    ddNdtByVdcTp[sl0*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sr0*(this->n_)+this->nSpecies] += dqdT;
-    ddNdtByVdcTp[sr1*(this->n_)+this->nSpecies] += dqdT;
-    ddNdtByVdcTp[sr2*(this->n_)+this->nSpecies] += dqdT;
-
-    const double dCfdC0 = 1;
-    ddNdtByVdcTp[sl0*(this->n_)+sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sr0*(this->n_)+sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sr1*(this->n_)+sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sr2*(this->n_)+sl0] += Kf*dCfdC0;
-
-    if(i>=this->n_Arrhenius + this->n_NonEquilibriumReversibleArrhenius && i <this->nReactions-this->n_PlogReaction)
-    {
-        double* const* __restrict__ ArrRes = this->ArrPtr.data();
-        const unsigned int k = i - this->n_Arrhenius - this->n_NonEquilibriumReversibleArrhenius;
-        unsigned int remain = this->nSpecies%4;
-
-        __m256d dKfdC = _mm256_set1_pd(this->dKfdC_[k]);
-        __m256d CF_ = _mm256_set1_pd(CF);            
-        __m256d CR_ = _mm256_set1_pd(CR);
-        double dKrdC = 0;
-
-        dKrdC = (this->dKfdC_[Itbr[4]+k]);
-
-        __m256d dKrdC_ = _mm256_set1_pd(dKrdC);
-
-        for(unsigned int j = 0; j < this->nSpecies-remain;j=j+4)
-        {
-            
-            unsigned int j0 = j+0;
-            unsigned int j1 = j+1;
-            unsigned int j2 = j+2;
-            unsigned int j3 = j+3;
-
-            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*nSpecies+j0]);
-
-            __m256d WdMdC = _mm256_mul_pd(_mm256_mul_pd(dKrdC_,dMdC),CR_);
-            WdMdC = _mm256_fmsub_pd(_mm256_mul_pd(dKfdC,dMdC),CF_,WdMdC);
-            _mm256_storeu_pd(&ArrRes[0][0],WdMdC);
-
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += ArrRes[0][0];
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += ArrRes[0][0];
-            ddNdtByVdcTp[sr2*(this->n_)+j0] += ArrRes[0][0]; 
-
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += ArrRes[0][1];
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += ArrRes[0][1];
-            ddNdtByVdcTp[sr2*(this->n_)+j1] += ArrRes[0][1];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += ArrRes[0][2];
-            ddNdtByVdcTp[sr1*(this->n_)+j2] += ArrRes[0][2];
-            ddNdtByVdcTp[sr2*(this->n_)+j2] += ArrRes[0][2];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sr0*(this->n_)+j3] += ArrRes[0][3];
-            ddNdtByVdcTp[sr1*(this->n_)+j3] += ArrRes[0][3];
-            ddNdtByVdcTp[sr2*(this->n_)+j3] += ArrRes[0][3];
-        } 
-        if(remain==1)
-        {
-            unsigned int j = this->nSpecies-1;
-            const double WdMdC = this->dKfdC_[k]*this->dMdC(k,j)*CF - dKrdC*this->dMdC(k,j)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j] -= WdMdC;
-
-            ddNdtByVdcTp[sr0*(this->n_)+j] += WdMdC;
-            ddNdtByVdcTp[sr1*(this->n_)+j] += WdMdC;
-            ddNdtByVdcTp[sr2*(this->n_)+j] += WdMdC;        
-        }
-        else if(remain==2)
-        {
-            unsigned int j0 = this->nSpecies-2;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr2*(this->n_)+j0] += WdMdC0;  
-
-            unsigned int j1 = this->nSpecies-1;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr2*(this->n_)+j1] += WdMdC1;      
-        }
-        else if(remain ==3)
-        {
-            unsigned int j0 = this->nSpecies-3;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr2*(this->n_)+j0] += WdMdC0;  
-
-            unsigned int j1 = this->nSpecies-2;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr2*(this->n_)+j1] += WdMdC1;   
-
-            unsigned int j2 = this->nSpecies-1;
-            double WdMdC2 = this->dKfdC_[k]*this->dMdC(k,j2)*CF - dKrdC*this->dMdC(k,j2)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= WdMdC2;
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += WdMdC2;
-            ddNdtByVdcTp[sr1*(this->n_)+j2] += WdMdC2;
-            ddNdtByVdcTp[sr2*(this->n_)+j2] += WdMdC2;   
-
-        }      
-
     }
 }            
 void inline OptReaction::JF21
@@ -853,10 +322,9 @@ void inline OptReaction::JF21
     const double* __restrict__ dBdT
 )const noexcept
 {
-    const unsigned int sl0 = lhsSpeciesIndex[lhsOffset[i]+0];
-    const unsigned int sl1 = lhsSpeciesIndex[lhsOffset[i]+1];
-    const unsigned int sr0 = rhsSpeciesIndex[rhsOffset[i]+0];
-
+    const unsigned int sl0 = lhsSpeciesIndex1D[lhsOffset[i]+0];
+    const unsigned int sl1 = lhsSpeciesIndex1D[lhsOffset[i]+1];
+    const unsigned int sr0 = rhsSpeciesIndex1D[rhsOffset[i]+0];
 
     double Kr = 0;
     double dKrdT = 0;
@@ -874,9 +342,19 @@ void inline OptReaction::JF21
         dKrdT = (dKfdT*invKc - (Kc > 1.4901171103413047e-8 ? Kr*dKcdTByKc : 0));  
         
         const double dCrdC0 = 1;
-        ddNdtByVdcTp[sl0*(this->n_)+sr0] -= (-Kr*dCrdC0);
-        ddNdtByVdcTp[sl1*(this->n_)+sr0] -= (-Kr*dCrdC0);
-        ddNdtByVdcTp[sr0*(this->n_)+sr0] += (-Kr*dCrdC0);     
+        ddNdtByVdcTp[sl0*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl1*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr0] += (-Kr*dCrdC0);     
+    }
+    else if(this->isIrreversible[i]==2)
+    {
+        Kr = this->Kf_[i - Ikf[1] + Ikf[9]];
+        dKrdT = this->dKfdT_[i - Ikf[1] + Ikf[9]];
+        invKc = Kr/Kf;
+        const double dCrdC0 = 1;
+        ddNdtByVdcTp[sl0*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl1*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr0] += (-Kr*dCrdC0);
     }
 
     const double CF = C[sl0]*C[sl1];
@@ -888,25 +366,22 @@ void inline OptReaction::JF21
     dNdtByV[sr0] = dNdtByV[sr0] + q;
 
     const double dqdT = (dKfdT*CF)-(dKrdT*CR);
-    ddNdtByVdcTp[sl0*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sl1*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sr0*(this->n_)+this->nSpecies] += dqdT;
+    ddNdtByVdcTp[sl0*(this->alignN)+(this->nSpecies)] -= dqdT;
+    ddNdtByVdcTp[sl1*(this->alignN)+(this->nSpecies)] -= dqdT;
+    ddNdtByVdcTp[sr0*(this->alignN)+(this->nSpecies)] += dqdT;
     
     const double dCfdC0 = C[sl1];
     const double dCfdC1 = C[sl0];
-    ddNdtByVdcTp[sl0*(this->n_)+sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sl1*(this->n_)+sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sr0*(this->n_)+sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sl0*(this->n_)+sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sl1*(this->n_)+sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sr0*(this->n_)+sl1] += Kf*dCfdC1;
+    ddNdtByVdcTp[sl0*(this->alignN)+sl0] -= Kf*dCfdC0;
+    ddNdtByVdcTp[sl1*(this->alignN)+sl0] -= Kf*dCfdC0;
+    ddNdtByVdcTp[sr0*(this->alignN)+sl0] += Kf*dCfdC0;
+    ddNdtByVdcTp[sl0*(this->alignN)+sl1] -= Kf*dCfdC1;
+    ddNdtByVdcTp[sl1*(this->alignN)+sl1] -= Kf*dCfdC1;
+    ddNdtByVdcTp[sr0*(this->alignN)+sl1] += Kf*dCfdC1;
 
-    if(i>=this->n_Arrhenius + this->n_NonEquilibriumReversibleArrhenius && i <this->nReactions-this->n_PlogReaction)
-    {
-        double* const* __restrict__ ArrRes = this->ArrPtr.data();
-        const unsigned int k = i - this->n_Arrhenius - this->n_NonEquilibriumReversibleArrhenius;
-        unsigned int remain = this->nSpecies%4;
-
+    if(i>=this->Ikf[2] && i <this->Ikf[6])
+    { 
+        const unsigned int k = i - this->Ikf[2];
 
         __m256d dKfdC = _mm256_set1_pd(this->dKfdC_[k]);
         __m256d CF_ = _mm256_set1_pd(CF);            
@@ -917,210 +392,23 @@ void inline OptReaction::JF21
         dKrdC = (this->dKfdC_[k]*invKc);
         __m256d dKrdC_ = _mm256_set1_pd(dKrdC);
 
-
-
-        for(unsigned int j = 0; j < this->nSpecies-remain;j=j+4)
+        for(unsigned int j = 0; j < this->AlignSpecies;j=j+4)
         {
-            unsigned int j0 = j+0;
-            unsigned int j1 = j+1;
-            unsigned int j2 = j+2;
-            unsigned int j3 = j+3;
-
-            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*nSpecies+j0]);
+            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*this->AlignSpecies+j]);
 
             __m256d WdMdC = _mm256_mul_pd(_mm256_mul_pd(dKrdC_,dMdC),CR_);
             WdMdC = _mm256_fmsub_pd(_mm256_mul_pd(dKfdC,dMdC),CF_,WdMdC);
-            _mm256_storeu_pd(&ArrRes[0][0],WdMdC);
 
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += ArrRes[0][0];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += ArrRes[0][1];    
-            
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sl1*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += ArrRes[0][2];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sl1*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sr0*(this->n_)+j3] += ArrRes[0][3];
+            __m256d sl0v = _mm256_loadu_pd(&ddNdtByVdcTp[sl0*(this->alignN)+j]);
+            __m256d sl1v = _mm256_loadu_pd(&ddNdtByVdcTp[sl1*(this->alignN)+j]);
+            __m256d sr0v = _mm256_loadu_pd(&ddNdtByVdcTp[sr0*(this->alignN)+j]);
+            sl0v = _mm256_sub_pd(sl0v,WdMdC);
+            sl1v = _mm256_sub_pd(sl1v,WdMdC);
+            sr0v = _mm256_add_pd(sr0v,WdMdC);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sl0*(this->alignN)+j],sl0v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sl1*(this->alignN)+j],sl1v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sr0*(this->alignN)+j],sr0v);               
         } 
-        if(remain==1)
-        {
-            unsigned int j = this->nSpecies-1;
-            const double WdMdC = this->dKfdC_[k]*this->dMdC(k,j)*CF - dKrdC*this->dMdC(k,j)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sl1*(this->n_)+j] -= WdMdC;            
-            ddNdtByVdcTp[sr0*(this->n_)+j] += WdMdC;              
-        }
-        else if(remain==2)
-        {
-            unsigned int j0 = this->nSpecies-2;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= WdMdC0;            
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;   
-            unsigned int j1 = this->nSpecies-1;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= WdMdC1;            
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;          
-        }
-        else if(remain ==3)
-        {
-            unsigned int j0 = this->nSpecies-3;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= WdMdC0;            
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;   
-            unsigned int j1 = this->nSpecies-2;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= WdMdC1;            
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;    
-            unsigned int j2 = this->nSpecies-1;
-            double WdMdC2 = this->dKfdC_[k]*this->dMdC(k,j2)*CF - dKrdC*this->dMdC(k,j2)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= WdMdC2;
-            ddNdtByVdcTp[sl1*(this->n_)+j2] -= WdMdC2;            
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += WdMdC2;          
-        }
-    }    
-}     
-
-void inline OptReaction::JF21
-(
-    unsigned int i,
-    double Kf,
-    double dKfdT,
-    const double* __restrict__ C,
-    double* __restrict__ dNdtByV,
-    double* __restrict__ ddNdtByVdcTp
-)const noexcept
-{
-    const unsigned int sl0 = lhsSpeciesIndex[lhsOffset[i]+0];
-    const unsigned int sl1 = lhsSpeciesIndex[lhsOffset[i]+1];
-    const unsigned int sr0 = rhsSpeciesIndex[rhsOffset[i]+0];
-
-    double Kr = 0;
-    double dKrdT = 0;
-
-    Kr = this->Kf_[i - Ikf[1] + Ikf[9]];
-    dKrdT = this->dKfdT_[i - Ikf[1] + Ikf[9]];
-    const double dCrdC0 = 1;
-    ddNdtByVdcTp[sl0*(this->n_)+sr0] -= (-Kr*dCrdC0);
-    ddNdtByVdcTp[sl1*(this->n_)+sr0] -= (-Kr*dCrdC0);
-    ddNdtByVdcTp[sr0*(this->n_)+sr0] += (-Kr*dCrdC0);    
-
-    const double CF = C[sl0]*C[sl1];
-    const double CR = C[sr0];
-
-    const double q = (Kf*CF) - (Kr*CR);
-    dNdtByV[sl0] = dNdtByV[sl0] - q; 
-    dNdtByV[sl1] = dNdtByV[sl1] - q;
-    dNdtByV[sr0] = dNdtByV[sr0] + q;
-
-    const double dqdT = (dKfdT*CF)-(dKrdT*CR);
-    ddNdtByVdcTp[sl0*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sl1*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sr0*(this->n_)+this->nSpecies] += dqdT;
-
-    const double dCfdC0 = C[sl1];
-    const double dCfdC1 = C[sl0];
-    ddNdtByVdcTp[sl0*(this->n_)+sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sl1*(this->n_)+sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sr0*(this->n_)+sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sl0*(this->n_)+sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sl1*(this->n_)+sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sr0*(this->n_)+sl1] += Kf*dCfdC1;
-
-    if(i>=this->n_Arrhenius + this->n_NonEquilibriumReversibleArrhenius && i <this->nReactions-this->n_PlogReaction)
-    {
-        double* const* __restrict__ ArrRes = this->ArrPtr.data();
-        const unsigned int k = i - this->n_Arrhenius - this->n_NonEquilibriumReversibleArrhenius;
-        unsigned int remain = this->nSpecies%4;
-
-
-        __m256d dKfdC = _mm256_set1_pd(this->dKfdC_[k]);
-        __m256d CF_ = _mm256_set1_pd(CF);            
-        __m256d CR_ = _mm256_set1_pd(CR);  
-        double dKrdC = 0;
-
-        dKrdC = (this->dKfdC_[Itbr[4]+k]);
-
-        __m256d dKrdC_ = _mm256_set1_pd(dKrdC);
-
-
-
-        for(unsigned int j = 0; j < this->nSpecies-remain;j=j+4)
-        {
-            unsigned int j0 = j+0;
-            unsigned int j1 = j+1;
-            unsigned int j2 = j+2;
-            unsigned int j3 = j+3;
-
-            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*nSpecies+j0]);
-
-            __m256d WdMdC = _mm256_mul_pd(_mm256_mul_pd(dKrdC_,dMdC),CR_);
-            WdMdC = _mm256_fmsub_pd(_mm256_mul_pd(dKfdC,dMdC),CF_,WdMdC);
-            _mm256_storeu_pd(&ArrRes[0][0],WdMdC);
-
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += ArrRes[0][0];
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += ArrRes[0][1];    
-            
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sl1*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += ArrRes[0][2];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sl1*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sr0*(this->n_)+j3] += ArrRes[0][3];
-        } 
-        if(remain==1)
-        {
-            unsigned int j = this->nSpecies-1;
-            const double WdMdC = this->dKfdC_[k]*this->dMdC(k,j)*CF - dKrdC*this->dMdC(k,j)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sl1*(this->n_)+j] -= WdMdC;            
-            ddNdtByVdcTp[sr0*(this->n_)+j] += WdMdC;              
-        }
-        else if(remain==2)
-        {
-            unsigned int j0 = this->nSpecies-2;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= WdMdC0;            
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;   
-            unsigned int j1 = this->nSpecies-1;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= WdMdC1;            
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;          
-        }
-        else if(remain ==3)
-        {
-            unsigned int j0 = this->nSpecies-3;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= WdMdC0;            
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;   
-            unsigned int j1 = this->nSpecies-2;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= WdMdC1;            
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;    
-            unsigned int j2 = this->nSpecies-1;
-            double WdMdC2 = this->dKfdC_[k]*this->dMdC(k,j2)*CF - dKrdC*this->dMdC(k,j2)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= WdMdC2;
-            ddNdtByVdcTp[sl1*(this->n_)+j2] -= WdMdC2;            
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += WdMdC2;          
-        }
     }    
 }     
 
@@ -1136,10 +424,11 @@ void inline OptReaction::JF22
     const double* __restrict__ dBdT
 )const noexcept
 {
-    const unsigned int sl0 = lhsSpeciesIndex[lhsOffset[i]+0];
-    const unsigned int sl1 = lhsSpeciesIndex[lhsOffset[i]+1];
-    const unsigned int sr0 = rhsSpeciesIndex[rhsOffset[i]+0];
-    const unsigned int sr1 = rhsSpeciesIndex[rhsOffset[i]+1];
+
+    const unsigned int sl0 = lhsSpeciesIndex1D[lhsOffset[i]+0];
+    const unsigned int sl1 = lhsSpeciesIndex1D[lhsOffset[i]+1];
+    const unsigned int sr0 = rhsSpeciesIndex1D[rhsOffset[i]+0];
+    const unsigned int sr1 = rhsSpeciesIndex1D[rhsOffset[i]+1];
 
 
     double Kr = 0;
@@ -1159,14 +448,30 @@ void inline OptReaction::JF22
 
         const double dCrdC0 = C[sr1];
         const double dCrdC1 = C[sr0];
-        ddNdtByVdcTp[sl0*(this->n_)+ sr0] -= (-Kr*dCrdC0);
-        ddNdtByVdcTp[sl1*(this->n_)+ sr0] -= (-Kr*dCrdC0);
-        ddNdtByVdcTp[sl0*(this->n_)+ sr1] -= (-Kr*dCrdC1);
-        ddNdtByVdcTp[sl1*(this->n_)+ sr1] -= (-Kr*dCrdC1);
-        ddNdtByVdcTp[sr0*(this->n_)+ sr0] += (-Kr*dCrdC0);
-        ddNdtByVdcTp[sr1*(this->n_)+ sr0] += (-Kr*dCrdC0);
-        ddNdtByVdcTp[sr0*(this->n_)+ sr1] += (-Kr*dCrdC1);
-        ddNdtByVdcTp[sr1*(this->n_)+ sr1] += (-Kr*dCrdC1);        
+        ddNdtByVdcTp[sl0*(this->alignN)+ sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl1*(this->alignN)+ sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl0*(this->alignN)+ sr1] -= (-Kr*dCrdC1);
+        ddNdtByVdcTp[sl1*(this->alignN)+ sr1] -= (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr0*(this->alignN)+ sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr1*(this->alignN)+ sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr0*(this->alignN)+ sr1] += (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr1*(this->alignN)+ sr1] += (-Kr*dCrdC1);        
+    }
+    else if(this->isIrreversible[i]==2)
+    {
+        Kr = this->Kf_[i - Ikf[1] + Ikf[9]];
+        dKrdT = this->dKfdT_[i - Ikf[1] + Ikf[9]];
+        invKc = Kr/Kf;
+        const double dCrdC0 = C[sr1];
+        const double dCrdC1 = C[sr0]; 
+        ddNdtByVdcTp[sl0*(this->alignN)+ sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl1*(this->alignN)+ sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl0*(this->alignN)+ sr1] -= (-Kr*dCrdC1);
+        ddNdtByVdcTp[sl1*(this->alignN)+ sr1] -= (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr0*(this->alignN)+ sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr1*(this->alignN)+ sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr0*(this->alignN)+ sr1] += (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr1*(this->alignN)+ sr1] += (-Kr*dCrdC1);
     }
 
     const double CF = C[sl0]*C[sl1];
@@ -1179,27 +484,25 @@ void inline OptReaction::JF22
     dNdtByV[sr1] = dNdtByV[sr1] + q;
 
     const double dqdT = (dKfdT*CF)-(dKrdT*CR);
-    ddNdtByVdcTp[sl0*(this->n_)+ this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sl1*(this->n_)+ this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sr0*(this->n_)+ this->nSpecies] += dqdT;
-    ddNdtByVdcTp[sr1*(this->n_)+ this->nSpecies] += dqdT;
+    ddNdtByVdcTp[sl0*(this->alignN)+ (this->nSpecies)] -= dqdT;
+    ddNdtByVdcTp[sl1*(this->alignN)+ (this->nSpecies)] -= dqdT;
+    ddNdtByVdcTp[sr0*(this->alignN)+ (this->nSpecies)] += dqdT;
+    ddNdtByVdcTp[sr1*(this->alignN)+ (this->nSpecies)] += dqdT;
 
     const double dCfdC0 = C[sl1];
     const double dCfdC1 = C[sl0];
-    ddNdtByVdcTp[sl0*(this->n_)+ sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sl1*(this->n_)+ sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sl0*(this->n_)+ sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sl1*(this->n_)+ sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sr0*(this->n_)+ sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sr1*(this->n_)+ sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sr0*(this->n_)+ sl1] += Kf*dCfdC1;
-    ddNdtByVdcTp[sr1*(this->n_)+ sl1] += Kf*dCfdC1;
+    ddNdtByVdcTp[sl0*(this->alignN)+ sl0] -= Kf*dCfdC0;
+    ddNdtByVdcTp[sl1*(this->alignN)+ sl0] -= Kf*dCfdC0;
+    ddNdtByVdcTp[sl0*(this->alignN)+ sl1] -= Kf*dCfdC1;
+    ddNdtByVdcTp[sl1*(this->alignN)+ sl1] -= Kf*dCfdC1;
+    ddNdtByVdcTp[sr0*(this->alignN)+ sl0] += Kf*dCfdC0;
+    ddNdtByVdcTp[sr1*(this->alignN)+ sl0] += Kf*dCfdC0;
+    ddNdtByVdcTp[sr0*(this->alignN)+ sl1] += Kf*dCfdC1;
+    ddNdtByVdcTp[sr1*(this->alignN)+ sl1] += Kf*dCfdC1;     
 
-    if(i>=this->n_Arrhenius + this->n_NonEquilibriumReversibleArrhenius && i <this->nReactions-this->n_PlogReaction)
-    {
-        double* const* __restrict__ ArrRes = this->ArrPtr.data();
-        const unsigned int k = i - this->n_Arrhenius - this->n_NonEquilibriumReversibleArrhenius;
-        unsigned int remain = this->nSpecies%4;
+    if(i>=this->Ikf[2] && i <this->Ikf[6])
+    { 
+        const unsigned int k = i - this->Ikf[2];
 
         __m256d dKfdC = _mm256_set1_pd(this->dKfdC_[k]);
         __m256d CF_ = _mm256_set1_pd(CF);            
@@ -1208,250 +511,30 @@ void inline OptReaction::JF22
         dKrdC = (this->dKfdC_[k]*invKc);
         __m256d dKrdC_ = _mm256_set1_pd(dKrdC);
 
-        for(unsigned int j = 0; j < this->nSpecies-remain;j=j+4)
+        for(unsigned int j = 0; j < this->AlignSpecies;j=j+4)
         {
-            unsigned int j0 = j+0;
-            unsigned int j1 = j+1;
-            unsigned int j2 = j+2;
-            unsigned int j3 = j+3;
-
-            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*nSpecies+j0]);
+            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*this->AlignSpecies+j]);
 
             __m256d WdMdC = _mm256_mul_pd(_mm256_mul_pd(dKrdC_,dMdC),CR_);
             WdMdC = _mm256_fmsub_pd(_mm256_mul_pd(dKfdC,dMdC),CF_,WdMdC);
-            _mm256_storeu_pd(&ArrRes[0][0],WdMdC);
 
-
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += ArrRes[0][0];
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += ArrRes[0][0]; 
-
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += ArrRes[0][1];
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += ArrRes[0][1];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sl1*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += ArrRes[0][2];
-            ddNdtByVdcTp[sr1*(this->n_)+j2] += ArrRes[0][2];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sl1*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sr0*(this->n_)+j3] += ArrRes[0][3];
-            ddNdtByVdcTp[sr1*(this->n_)+j3] += ArrRes[0][3];
+            __m256d sl0v = _mm256_loadu_pd(&ddNdtByVdcTp[sl0*(this->alignN)+j]);
+            __m256d sl1v = _mm256_loadu_pd(&ddNdtByVdcTp[sl1*(this->alignN)+j]);
+            __m256d sr0v = _mm256_loadu_pd(&ddNdtByVdcTp[sr0*(this->alignN)+j]);
+            __m256d sr1v = _mm256_loadu_pd(&ddNdtByVdcTp[sr1*(this->alignN)+j]);
+            sl0v = _mm256_sub_pd(sl0v,WdMdC);
+            sl1v = _mm256_sub_pd(sl1v,WdMdC);
+            sr0v = _mm256_add_pd(sr0v,WdMdC);
+            sr1v = _mm256_add_pd(sr1v,WdMdC);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sl0*(this->alignN)+j],sl0v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sl1*(this->alignN)+j],sl1v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sr0*(this->alignN)+j],sr0v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sr1*(this->alignN)+j],sr1v);
         } 
-        if(remain==1)
-        {
-            unsigned int j = this->nSpecies-1;
-            const double WdMdC = this->dKfdC_[k]*this->dMdC(k,j)*CF - dKrdC*this->dMdC(k,j)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sl1*(this->n_)+j] -= WdMdC;            
-            ddNdtByVdcTp[sr0*(this->n_)+j] += WdMdC;      
-            ddNdtByVdcTp[sr1*(this->n_)+j] += WdMdC;        
-        }
-        else if(remain==2)
-        {
-            unsigned int j0 = this->nSpecies-2;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= WdMdC0;            
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;  
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += WdMdC0;  
-
-
-            unsigned int j1 = this->nSpecies-1;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= WdMdC1;            
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;    
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += WdMdC1;      
-        }
-        else if(remain ==3)
-        {
-            unsigned int j0 = this->nSpecies-3;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= WdMdC0;            
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;  
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += WdMdC0;  
-
-            unsigned int j1 = this->nSpecies-2;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= WdMdC1;            
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;    
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += WdMdC1;   
-
-            unsigned int j2 = this->nSpecies-1;
-            double WdMdC2 = this->dKfdC_[k]*this->dMdC(k,j2)*CF - dKrdC*this->dMdC(k,j2)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= WdMdC2;
-            ddNdtByVdcTp[sl1*(this->n_)+j2] -= WdMdC2;            
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += WdMdC2;    
-            ddNdtByVdcTp[sr1*(this->n_)+j2] += WdMdC2;   
-        }
-    }   
+    }
 }   
 
 
-void inline OptReaction::JF22
-(
-    unsigned int i,
-    double Kf,
-    double dKfdT,
-    const double* __restrict__ C,
-    double* __restrict__ dNdtByV,
-    double* __restrict__ ddNdtByVdcTp
-)const noexcept
-{
-    const unsigned int sl0 = lhsSpeciesIndex[lhsOffset[i]+0];
-    const unsigned int sl1 = lhsSpeciesIndex[lhsOffset[i]+1];
-    const unsigned int sr0 = rhsSpeciesIndex[rhsOffset[i]+0];
-    const unsigned int sr1 = rhsSpeciesIndex[rhsOffset[i]+1];
-
-
-    double Kr = 0;
-    double dKrdT = 0;
-    double dCrdC0 = 1;
-    double dCrdC1 = 1; 
-    Kr = this->Kf_[i - Ikf[1] + Ikf[9]];
-    dKrdT = this->dKfdT_[i - Ikf[1] + Ikf[9]];
-
-    dCrdC0 = C[sr1];
-    dCrdC1 = C[sr0]; 
-    ddNdtByVdcTp[sl0*(this->n_)+ sr0] -= (-Kr*dCrdC0);
-    ddNdtByVdcTp[sl1*(this->n_)+ sr0] -= (-Kr*dCrdC0);
-    ddNdtByVdcTp[sl0*(this->n_)+ sr1] -= (-Kr*dCrdC1);
-    ddNdtByVdcTp[sl1*(this->n_)+ sr1] -= (-Kr*dCrdC1);
-    ddNdtByVdcTp[sr0*(this->n_)+ sr0] += (-Kr*dCrdC0);
-    ddNdtByVdcTp[sr1*(this->n_)+ sr0] += (-Kr*dCrdC0);
-    ddNdtByVdcTp[sr0*(this->n_)+ sr1] += (-Kr*dCrdC1);
-    ddNdtByVdcTp[sr1*(this->n_)+ sr1] += (-Kr*dCrdC1);        
-
-    const double CF = C[sl0]*C[sl1];
-    const double CR = C[sr0]*C[sr1];
-    
-    const double q = (Kf*CF) - (Kr*CR);
-    dNdtByV[sl0] = dNdtByV[sl0] - q;
-    dNdtByV[sl1] = dNdtByV[sl1] - q;
-    dNdtByV[sr0] = dNdtByV[sr0] + q;
-    dNdtByV[sr1] = dNdtByV[sr1] + q;
-
-    const double dqdT = (dKfdT*CF)-(dKrdT*CR);
-    ddNdtByVdcTp[sl0*(this->n_)+ this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sl1*(this->n_)+ this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sr0*(this->n_)+ this->nSpecies] += dqdT;
-    ddNdtByVdcTp[sr1*(this->n_)+ this->nSpecies] += dqdT;
-
-    const double dCfdC0 = C[sl1];
-    const double dCfdC1 = C[sl0];
-    ddNdtByVdcTp[sl0*(this->n_)+ sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sl1*(this->n_)+ sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sl0*(this->n_)+ sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sl1*(this->n_)+ sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sr0*(this->n_)+ sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sr1*(this->n_)+ sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sr0*(this->n_)+ sl1] += Kf*dCfdC1;
-    ddNdtByVdcTp[sr1*(this->n_)+ sl1] += Kf*dCfdC1;
-
-    if(i>=this->n_Arrhenius + this->n_NonEquilibriumReversibleArrhenius && i <this->nReactions-this->n_PlogReaction)
-    {
-        double* const* __restrict__ ArrRes = this->ArrPtr.data();
-        const unsigned int k = i - this->n_Arrhenius - this->n_NonEquilibriumReversibleArrhenius;
-        unsigned int remain = this->nSpecies%4;
-
-        __m256d dKfdC = _mm256_set1_pd(this->dKfdC_[k]);
-        __m256d CF_ = _mm256_set1_pd(CF);            
-        __m256d CR_ = _mm256_set1_pd(CR);  
-        double dKrdC = 0;
-        dKrdC = this->dKfdC_[Itbr[4]+k];
-        __m256d dKrdC_ = _mm256_set1_pd(dKrdC);
-        for(unsigned int j = 0; j < this->nSpecies-remain;j=j+4)
-        {
-            unsigned int j0 = j+0;
-            unsigned int j1 = j+1;
-            unsigned int j2 = j+2;
-            unsigned int j3 = j+3;
-
-            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*nSpecies+j0]);
-
-            __m256d WdMdC = _mm256_mul_pd(_mm256_mul_pd(dKrdC_,dMdC),CR_);
-            WdMdC = _mm256_fmsub_pd(_mm256_mul_pd(dKfdC,dMdC),CF_,WdMdC);
-            _mm256_storeu_pd(&ArrRes[0][0],WdMdC);
-
-
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += ArrRes[0][0];
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += ArrRes[0][0]; 
-
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += ArrRes[0][1];
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += ArrRes[0][1];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sl1*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += ArrRes[0][2];
-            ddNdtByVdcTp[sr1*(this->n_)+j2] += ArrRes[0][2];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sl1*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sr0*(this->n_)+j3] += ArrRes[0][3];
-            ddNdtByVdcTp[sr1*(this->n_)+j3] += ArrRes[0][3];
-        } 
-        if(remain==1)
-        {
-            unsigned int j = this->nSpecies-1;
-            const double WdMdC = this->dKfdC_[k]*this->dMdC(k,j)*CF - dKrdC*this->dMdC(k,j)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sl1*(this->n_)+j] -= WdMdC;            
-            ddNdtByVdcTp[sr0*(this->n_)+j] += WdMdC;      
-            ddNdtByVdcTp[sr1*(this->n_)+j] += WdMdC;        
-        }
-        else if(remain==2)
-        {
-            unsigned int j0 = this->nSpecies-2;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= WdMdC0;            
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;  
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += WdMdC0;  
-
-
-            unsigned int j1 = this->nSpecies-1;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= WdMdC1;            
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;    
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += WdMdC1;      
-        }
-        else if(remain ==3)
-        {
-            unsigned int j0 = this->nSpecies-3;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= WdMdC0;            
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;  
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += WdMdC0;  
-
-            unsigned int j1 = this->nSpecies-2;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= WdMdC1;            
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;    
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += WdMdC1;   
-
-            unsigned int j2 = this->nSpecies-1;
-            double WdMdC2 = this->dKfdC_[k]*this->dMdC(k,j2)*CF - dKrdC*this->dMdC(k,j2)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= WdMdC2;
-            ddNdtByVdcTp[sl1*(this->n_)+j2] -= WdMdC2;            
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += WdMdC2;    
-            ddNdtByVdcTp[sr1*(this->n_)+j2] += WdMdC2;   
-        }
-    }   
-} 
 
 void inline OptReaction::JF23
 (
@@ -1465,13 +548,11 @@ void inline OptReaction::JF23
     const double* __restrict__ dBdT
 )const noexcept
 {
-
-
-    const unsigned int sl0 = lhsSpeciesIndex[lhsOffset[i]+0];
-    const unsigned int sl1 = lhsSpeciesIndex[lhsOffset[i]+1];
-    const unsigned int sr0 = rhsSpeciesIndex[rhsOffset[i]+0];
-    const unsigned int sr1 = rhsSpeciesIndex[rhsOffset[i]+1];
-    const unsigned int sr2 = rhsSpeciesIndex[rhsOffset[i]+2];
+    const unsigned int sl0 = lhsSpeciesIndex1D[lhsOffset[i]+0];
+    const unsigned int sl1 = lhsSpeciesIndex1D[lhsOffset[i]+1];
+    const unsigned int sr0 = rhsSpeciesIndex1D[rhsOffset[i]+0];
+    const unsigned int sr1 = rhsSpeciesIndex1D[rhsOffset[i]+1];
+    const unsigned int sr2 = rhsSpeciesIndex1D[rhsOffset[i]+2];
 
     double Kr = 0;
     double dKrdT = 0;
@@ -1487,25 +568,49 @@ void inline OptReaction::JF23
         const double dKcdTByKc = sumVdBdT - 1*invT;
         Kr = Kf*invKc;
         dKrdT = (dKfdT*invKc - (Kc > 1.4901171103413047e-8 ? Kr*dKcdTByKc : 0));  
-        
+
         const double dCrdC0 = C[sr1]*C[sr2];
         const double dCrdC1 = C[sr0]*C[sr2];
         const double dCrdC2 = C[sr0]*C[sr1];
-        ddNdtByVdcTp[sl0*(this->n_)+sr0] -= (-Kr*dCrdC0);
-        ddNdtByVdcTp[sl1*(this->n_)+sr0] -= (-Kr*dCrdC0);
-        ddNdtByVdcTp[sr0*(this->n_)+sr0] += (-Kr*dCrdC0);
-        ddNdtByVdcTp[sr1*(this->n_)+sr0] += (-Kr*dCrdC0);
-        ddNdtByVdcTp[sr2*(this->n_)+sr0] += (-Kr*dCrdC0);
-        ddNdtByVdcTp[sl0*(this->n_)+sr1] -= (-Kr*dCrdC1);
-        ddNdtByVdcTp[sl1*(this->n_)+sr1] -= (-Kr*dCrdC1);
-        ddNdtByVdcTp[sr0*(this->n_)+sr1] += (-Kr*dCrdC1);
-        ddNdtByVdcTp[sr1*(this->n_)+sr1] += (-Kr*dCrdC1);
-        ddNdtByVdcTp[sr2*(this->n_)+sr1] += (-Kr*dCrdC1);
-        ddNdtByVdcTp[sl0*(this->n_)+sr2] -= (-Kr*dCrdC2);
-        ddNdtByVdcTp[sl1*(this->n_)+sr2] -= (-Kr*dCrdC2);
-        ddNdtByVdcTp[sr0*(this->n_)+sr2] += (-Kr*dCrdC2);
-        ddNdtByVdcTp[sr1*(this->n_)+sr2] += (-Kr*dCrdC2);
-        ddNdtByVdcTp[sr2*(this->n_)+sr2] += (-Kr*dCrdC2);   
+        ddNdtByVdcTp[sl0*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl1*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr1*(this->alignN)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr2*(this->alignN)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl0*(this->alignN)+sr1] -= (-Kr*dCrdC1);
+        ddNdtByVdcTp[sl1*(this->alignN)+sr1] -= (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr1] += (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr1*(this->alignN)+sr1] += (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr2*(this->alignN)+sr1] += (-Kr*dCrdC1);
+        ddNdtByVdcTp[sl0*(this->alignN)+sr2] -= (-Kr*dCrdC2);
+        ddNdtByVdcTp[sl1*(this->alignN)+sr2] -= (-Kr*dCrdC2);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr2] += (-Kr*dCrdC2);
+        ddNdtByVdcTp[sr1*(this->alignN)+sr2] += (-Kr*dCrdC2);
+        ddNdtByVdcTp[sr2*(this->alignN)+sr2] += (-Kr*dCrdC2);   
+    }
+    else if(this->isIrreversible[i]==2)
+    {
+        Kr = this->Kf_[i - Ikf[1] + Ikf[9]];
+        dKrdT = this->dKfdT_[i - Ikf[1] + Ikf[9]];
+        invKc = Kr/Kf;        
+        const double dCrdC0 = C[sr1]*C[sr2];
+        const double dCrdC1 = C[sr0]*C[sr2];
+        const double dCrdC2 = C[sr0]*C[sr1];
+        ddNdtByVdcTp[sl0*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl1*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr1*(this->alignN)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr2*(this->alignN)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl0*(this->alignN)+sr1] -= (-Kr*dCrdC1);
+        ddNdtByVdcTp[sl1*(this->alignN)+sr1] -= (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr1] += (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr1*(this->alignN)+sr1] += (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr2*(this->alignN)+sr1] += (-Kr*dCrdC1);
+        ddNdtByVdcTp[sl0*(this->alignN)+sr2] -= (-Kr*dCrdC2);
+        ddNdtByVdcTp[sl1*(this->alignN)+sr2] -= (-Kr*dCrdC2);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr2] += (-Kr*dCrdC2);
+        ddNdtByVdcTp[sr1*(this->alignN)+sr2] += (-Kr*dCrdC2);
+        ddNdtByVdcTp[sr2*(this->alignN)+sr2] += (-Kr*dCrdC2);
     }
 
     const double CF = C[sl0]*C[sl1];
@@ -1519,30 +624,28 @@ void inline OptReaction::JF23
     dNdtByV[sr2] = dNdtByV[sr2] + q;
 
     const double dqdT = (dKfdT*CF)-(dKrdT*CR);
-    ddNdtByVdcTp[sl0*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sl1*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sr0*(this->n_)+this->nSpecies] += dqdT;
-    ddNdtByVdcTp[sr1*(this->n_)+this->nSpecies] += dqdT;
-    ddNdtByVdcTp[sr2*(this->n_)+this->nSpecies] += dqdT;
+    ddNdtByVdcTp[sl0*(this->alignN) + (this->nSpecies)] -= dqdT;
+    ddNdtByVdcTp[sl1*(this->alignN) + (this->nSpecies)] -= dqdT;
+    ddNdtByVdcTp[sr0*(this->alignN) + (this->nSpecies)] += dqdT;
+    ddNdtByVdcTp[sr1*(this->alignN) + (this->nSpecies)] += dqdT;
+    ddNdtByVdcTp[sr2*(this->alignN) + (this->nSpecies)] += dqdT;
 
     const double dCfdC0 = C[sl1];
     const double dCfdC1 = C[sl0];
-    ddNdtByVdcTp[sl0*(this->n_)+sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sl1*(this->n_)+sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sr0*(this->n_)+sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sr1*(this->n_)+sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sr2*(this->n_)+sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sl0*(this->n_)+sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sl1*(this->n_)+sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sr0*(this->n_)+sl1] += Kf*dCfdC1;
-    ddNdtByVdcTp[sr1*(this->n_)+sl1] += Kf*dCfdC1;
-    ddNdtByVdcTp[sr2*(this->n_)+sl1] += Kf*dCfdC1;
+    ddNdtByVdcTp[sl0*(this->alignN)+sl0] -= Kf*dCfdC0;
+    ddNdtByVdcTp[sl1*(this->alignN)+sl0] -= Kf*dCfdC0;
+    ddNdtByVdcTp[sr0*(this->alignN)+sl0] += Kf*dCfdC0;
+    ddNdtByVdcTp[sr1*(this->alignN)+sl0] += Kf*dCfdC0;
+    ddNdtByVdcTp[sr2*(this->alignN)+sl0] += Kf*dCfdC0;
+    ddNdtByVdcTp[sl0*(this->alignN)+sl1] -= Kf*dCfdC1;
+    ddNdtByVdcTp[sl1*(this->alignN)+sl1] -= Kf*dCfdC1;
+    ddNdtByVdcTp[sr0*(this->alignN)+sl1] += Kf*dCfdC1;
+    ddNdtByVdcTp[sr1*(this->alignN)+sl1] += Kf*dCfdC1;
+    ddNdtByVdcTp[sr2*(this->alignN)+sl1] += Kf*dCfdC1;
 
-    if(i>=this->n_Arrhenius + this->n_NonEquilibriumReversibleArrhenius && i <this->nReactions-this->n_PlogReaction)
-    {
-        double* const* __restrict__ ArrRes = this->ArrPtr.data();
-        const unsigned int k = i - this->n_Arrhenius - this->n_NonEquilibriumReversibleArrhenius;
-        unsigned int remain = this->nSpecies%4;
+    if(i>=this->Ikf[2] && i <this->Ikf[6])
+    { 
+        const unsigned int k = i - this->Ikf[2];
 
         __m256d dKfdC = _mm256_set1_pd(this->dKfdC_[k]);
         __m256d CF_ = _mm256_set1_pd(CF);            
@@ -1551,286 +654,30 @@ void inline OptReaction::JF23
         dKrdC = (this->dKfdC_[k]*invKc);
         __m256d dKrdC_ = _mm256_set1_pd(dKrdC);
 
-        for(unsigned int j = 0; j < this->nSpecies-remain;j=j+4)
+        for(unsigned int j = 0; j < AlignSpecies;j=j+4)
         {
-            unsigned int j0 = j+0;
-            unsigned int j1 = j+1;
-            unsigned int j2 = j+2;
-            unsigned int j3 = j+3;
-
-            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*nSpecies+j0]);
-
+            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*this->AlignSpecies+j]);
             __m256d WdMdC = _mm256_mul_pd(_mm256_mul_pd(dKrdC_,dMdC),CR_);
             WdMdC = _mm256_fmsub_pd(_mm256_mul_pd(dKfdC,dMdC),CF_,WdMdC);
-            _mm256_storeu_pd(&ArrRes[0][0],WdMdC);
 
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += ArrRes[0][0];
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += ArrRes[0][0];
-            ddNdtByVdcTp[sr2*(this->n_)+j0] += ArrRes[0][0]; 
-
-
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += ArrRes[0][1];
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += ArrRes[0][1];
-            ddNdtByVdcTp[sr2*(this->n_)+j1] += ArrRes[0][1]; 
-
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sl1*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += ArrRes[0][2];
-            ddNdtByVdcTp[sr1*(this->n_)+j2] += ArrRes[0][2];
-            ddNdtByVdcTp[sr2*(this->n_)+j2] += ArrRes[0][2];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sl1*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sr0*(this->n_)+j3] += ArrRes[0][3];
-            ddNdtByVdcTp[sr1*(this->n_)+j3] += ArrRes[0][3];
-            ddNdtByVdcTp[sr2*(this->n_)+j3] += ArrRes[0][3];
+            __m256d sl0v = _mm256_loadu_pd(&ddNdtByVdcTp[sl0*(this->alignN)+j]);
+            __m256d sl1v = _mm256_loadu_pd(&ddNdtByVdcTp[sl1*(this->alignN)+j]);
+            __m256d sr0v = _mm256_loadu_pd(&ddNdtByVdcTp[sr0*(this->alignN)+j]);
+            __m256d sr1v = _mm256_loadu_pd(&ddNdtByVdcTp[sr1*(this->alignN)+j]);
+            __m256d sr2v = _mm256_loadu_pd(&ddNdtByVdcTp[sr2*(this->alignN)+j]);
+            sl0v = _mm256_sub_pd(sl0v,WdMdC);
+            sl1v = _mm256_sub_pd(sl1v,WdMdC);
+            sr0v = _mm256_add_pd(sr0v,WdMdC);
+            sr1v = _mm256_add_pd(sr1v,WdMdC);
+            sr2v = _mm256_add_pd(sr2v,WdMdC);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sl0*(this->alignN)+j],sl0v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sl1*(this->alignN)+j],sl1v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sr0*(this->alignN)+j],sr0v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sr1*(this->alignN)+j],sr1v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sr2*(this->alignN)+j],sr2v);                   
         } 
-
-        if(remain==1)
-        {
-            unsigned int j = this->nSpecies-1;
-            const double WdMdC = this->dKfdC_[k]*this->dMdC(k,j)*CF - dKrdC*this->dMdC(k,j)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sl1*(this->n_)+j] -= WdMdC;
-
-            ddNdtByVdcTp[sr0*(this->n_)+j] += WdMdC;
-            ddNdtByVdcTp[sr1*(this->n_)+j] += WdMdC;
-            ddNdtByVdcTp[sr2*(this->n_)+j] += WdMdC;        
-        }
-        else if(remain==2)
-        {
-            unsigned int j0 = this->nSpecies-2;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr2*(this->n_)+j0] += WdMdC0;  
-
-            unsigned int j1 = this->nSpecies-1;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr2*(this->n_)+j1] += WdMdC1;  
-        }
-        else if(remain ==3)
-        {
-            unsigned int j0 = this->nSpecies-3;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr2*(this->n_)+j0] += WdMdC0;  
-
-            unsigned int j1 = this->nSpecies-2;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr2*(this->n_)+j1] += WdMdC1;  
-
-            unsigned int j2 = this->nSpecies-1;
-            double WdMdC2 = this->dKfdC_[k]*this->dMdC(k,j2)*CF - dKrdC*this->dMdC(k,j2)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= WdMdC2;
-            ddNdtByVdcTp[sl1*(this->n_)+j2] -= WdMdC2;
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += WdMdC2;
-            ddNdtByVdcTp[sr1*(this->n_)+j2] += WdMdC2;
-            ddNdtByVdcTp[sr2*(this->n_)+j2] += WdMdC2;  
-        }      
-
     }  
 }    
-
-void inline OptReaction::JF23
-(
-    unsigned int i,
-    double Kf,
-    double dKfdT,
-    const double* __restrict__ C,
-    double* __restrict__ dNdtByV,
-    double* __restrict__ ddNdtByVdcTp
-)const noexcept
-{
-    const unsigned int sl0 = lhsSpeciesIndex[lhsOffset[i]+0];
-    const unsigned int sl1 = lhsSpeciesIndex[lhsOffset[i]+1];
-    const unsigned int sr0 = rhsSpeciesIndex[rhsOffset[i]+0];
-    const unsigned int sr1 = rhsSpeciesIndex[rhsOffset[i]+1];
-    const unsigned int sr2 = rhsSpeciesIndex[rhsOffset[i]+2];
-
-    double Kr = 0;
-    double dKrdT = 0;
-
-    Kr = this->Kf_[i - Ikf[1] + Ikf[9]];
-    dKrdT = this->dKfdT_[i - Ikf[1] + Ikf[9]];
-    const double dCrdC0 = C[sr1]*C[sr2];
-    const double dCrdC1 = C[sr0]*C[sr2];
-    const double dCrdC2 = C[sr0]*C[sr1];
-    
-    ddNdtByVdcTp[sl0*(this->n_)+sr0] -= (-Kr*dCrdC0);
-    ddNdtByVdcTp[sl1*(this->n_)+sr0] -= (-Kr*dCrdC0);
-    ddNdtByVdcTp[sr0*(this->n_)+sr0] += (-Kr*dCrdC0);
-    ddNdtByVdcTp[sr1*(this->n_)+sr0] += (-Kr*dCrdC0);
-    ddNdtByVdcTp[sr2*(this->n_)+sr0] += (-Kr*dCrdC0);
-    ddNdtByVdcTp[sl0*(this->n_)+sr1] -= (-Kr*dCrdC1);
-    ddNdtByVdcTp[sl1*(this->n_)+sr1] -= (-Kr*dCrdC1);
-    ddNdtByVdcTp[sr0*(this->n_)+sr1] += (-Kr*dCrdC1);
-    ddNdtByVdcTp[sr1*(this->n_)+sr1] += (-Kr*dCrdC1);
-    ddNdtByVdcTp[sr2*(this->n_)+sr1] += (-Kr*dCrdC1);
-    ddNdtByVdcTp[sl0*(this->n_)+sr2] -= (-Kr*dCrdC2);
-    ddNdtByVdcTp[sl1*(this->n_)+sr2] -= (-Kr*dCrdC2);
-    ddNdtByVdcTp[sr0*(this->n_)+sr2] += (-Kr*dCrdC2);
-    ddNdtByVdcTp[sr1*(this->n_)+sr2] += (-Kr*dCrdC2);
-    ddNdtByVdcTp[sr2*(this->n_)+sr2] += (-Kr*dCrdC2);  
-    
-    const double CF = C[sl0]*C[sl1];
-    const double CR = C[sr0]*C[sr1]*C[sr2];
-    
-    const double q = (Kf*CF) - (Kr*CR);
-    dNdtByV[sl0] = dNdtByV[sl0] - q; 
-    dNdtByV[sl1] = dNdtByV[sl1] - q;
-    dNdtByV[sr0] = dNdtByV[sr0] + q;
-    dNdtByV[sr1] = dNdtByV[sr1] + q;
-    dNdtByV[sr2] = dNdtByV[sr2] + q;
-
-    const double dqdT = (dKfdT*CF)-(dKrdT*CR);
-    ddNdtByVdcTp[sl0*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sl1*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sr0*(this->n_)+this->nSpecies] += dqdT;
-    ddNdtByVdcTp[sr1*(this->n_)+this->nSpecies] += dqdT;
-    ddNdtByVdcTp[sr2*(this->n_)+this->nSpecies] += dqdT;
-
-    const double dCfdC0 = C[sl1];
-    const double dCfdC1 = C[sl0];
-    ddNdtByVdcTp[sl0*(this->n_)+sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sl1*(this->n_)+sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sr0*(this->n_)+sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sr1*(this->n_)+sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sr2*(this->n_)+sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sl0*(this->n_)+sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sl1*(this->n_)+sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sr0*(this->n_)+sl1] += Kf*dCfdC1;
-    ddNdtByVdcTp[sr1*(this->n_)+sl1] += Kf*dCfdC1;
-    ddNdtByVdcTp[sr2*(this->n_)+sl1] += Kf*dCfdC1;
-
-    if(i>=this->n_Arrhenius + this->n_NonEquilibriumReversibleArrhenius && i <this->nReactions-this->n_PlogReaction)
-    {
-        double* const* __restrict__ ArrRes = this->ArrPtr.data();
-        const unsigned int k = i - this->n_Arrhenius - this->n_NonEquilibriumReversibleArrhenius;
-        unsigned int remain = this->nSpecies%4;
-
-        __m256d dKfdC = _mm256_set1_pd(this->dKfdC_[k]);
-        __m256d CF_ = _mm256_set1_pd(CF);            
-        __m256d CR_ = _mm256_set1_pd(CR);  
-        double dKrdC = 0;
-        dKrdC = (this->dKfdC_[Itbr[4]+k]);
-        __m256d dKrdC_ = _mm256_set1_pd(dKrdC);
-
-        for(unsigned int j = 0; j < this->nSpecies-remain;j=j+4)
-        {
-            unsigned int j0 = j+0;
-            unsigned int j1 = j+1;
-            unsigned int j2 = j+2;
-            unsigned int j3 = j+3;
-
-            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*nSpecies+j0]);
-
-            __m256d WdMdC = _mm256_mul_pd(_mm256_mul_pd(dKrdC_,dMdC),CR_);
-            WdMdC = _mm256_fmsub_pd(_mm256_mul_pd(dKfdC,dMdC),CF_,WdMdC);
-            _mm256_storeu_pd(&ArrRes[0][0],WdMdC);
-
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += ArrRes[0][0];
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += ArrRes[0][0];
-            ddNdtByVdcTp[sr2*(this->n_)+j0] += ArrRes[0][0]; 
-
-
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += ArrRes[0][1];
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += ArrRes[0][1];
-            ddNdtByVdcTp[sr2*(this->n_)+j1] += ArrRes[0][1]; 
-
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sl1*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += ArrRes[0][2];
-            ddNdtByVdcTp[sr1*(this->n_)+j2] += ArrRes[0][2];
-            ddNdtByVdcTp[sr2*(this->n_)+j2] += ArrRes[0][2];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sl1*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sr0*(this->n_)+j3] += ArrRes[0][3];
-            ddNdtByVdcTp[sr1*(this->n_)+j3] += ArrRes[0][3];
-            ddNdtByVdcTp[sr2*(this->n_)+j3] += ArrRes[0][3];
-        } 
-
-        if(remain==1)
-        {
-            unsigned int j = this->nSpecies-1;
-            const double WdMdC = this->dKfdC_[k]*this->dMdC(k,j)*CF - dKrdC*this->dMdC(k,j)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sl1*(this->n_)+j] -= WdMdC;
-
-            ddNdtByVdcTp[sr0*(this->n_)+j] += WdMdC;
-            ddNdtByVdcTp[sr1*(this->n_)+j] += WdMdC;
-            ddNdtByVdcTp[sr2*(this->n_)+j] += WdMdC;        
-        }
-        else if(remain==2)
-        {
-            unsigned int j0 = this->nSpecies-2;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr2*(this->n_)+j0] += WdMdC0;  
-
-            unsigned int j1 = this->nSpecies-1;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr2*(this->n_)+j1] += WdMdC1;  
-        }
-        else if(remain ==3)
-        {
-            unsigned int j0 = this->nSpecies-3;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr2*(this->n_)+j0] += WdMdC0;  
-
-            unsigned int j1 = this->nSpecies-2;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr2*(this->n_)+j1] += WdMdC1;  
-
-            unsigned int j2 = this->nSpecies-1;
-            double WdMdC2 = this->dKfdC_[k]*this->dMdC(k,j2)*CF - dKrdC*this->dMdC(k,j2)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= WdMdC2;
-            ddNdtByVdcTp[sl1*(this->n_)+j2] -= WdMdC2;
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += WdMdC2;
-            ddNdtByVdcTp[sr1*(this->n_)+j2] += WdMdC2;
-            ddNdtByVdcTp[sr2*(this->n_)+j2] += WdMdC2;  
-        }      
-
-    }  
-}
-
 
 void inline OptReaction::JF31
 (
@@ -1845,10 +692,10 @@ void inline OptReaction::JF31
 )const noexcept
 {
 
-    const unsigned int sl0 = lhsSpeciesIndex[lhsOffset[i]+0];
-    const unsigned int sl1 = lhsSpeciesIndex[lhsOffset[i]+1];
-    const unsigned int sl2 = lhsSpeciesIndex[lhsOffset[i]+2];
-    const unsigned int sr0 = rhsSpeciesIndex[rhsOffset[i]+0];
+    const unsigned int sl0 = lhsSpeciesIndex1D[lhsOffset[i]+0];
+    const unsigned int sl1 = lhsSpeciesIndex1D[lhsOffset[i]+1];
+    const unsigned int sl2 = lhsSpeciesIndex1D[lhsOffset[i]+2];
+    const unsigned int sr0 = rhsSpeciesIndex1D[rhsOffset[i]+0];
 
 
     double Kr = 0;
@@ -1867,10 +714,21 @@ void inline OptReaction::JF31
         dKrdT = (dKfdT*invKc - (Kc > 1.4901171103413047e-8 ? Kr*dKcdTByKc : 0));  
         
         const double dCrdC0 = 1;
-        ddNdtByVdcTp[sl0*(this->n_)+sr0] -= (-Kr*dCrdC0);
-        ddNdtByVdcTp[sl1*(this->n_)+sr0] -= (-Kr*dCrdC0);
-        ddNdtByVdcTp[sl2*(this->n_)+sr0] -= (-Kr*dCrdC0);    
-        ddNdtByVdcTp[sr0*(this->n_)+sr0] += (-Kr*dCrdC0);   
+        ddNdtByVdcTp[sl0*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl1*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl2*(this->alignN)+sr0] -= (-Kr*dCrdC0);    
+        ddNdtByVdcTp[sr0*(this->alignN)+sr0] += (-Kr*dCrdC0);   
+    }
+    else if(this->isIrreversible[i]==2)
+    {
+        Kr = this->Kf_[i - Ikf[1] + Ikf[9]];
+        dKrdT = this->dKfdT_[i - Ikf[1] + Ikf[9]];
+        invKc = Kr/Kf;        
+        const double dCrdC0 = 1;
+        ddNdtByVdcTp[sl0*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl1*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl2*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr0] += (-Kr*dCrdC0);
     }
 
     const double CF = C[sl0]*C[sl1]*C[sl2];
@@ -1883,290 +741,60 @@ void inline OptReaction::JF31
     dNdtByV[sr0] = dNdtByV[sr0] + q;
 
     const double dqdT = (dKfdT*CF)-(dKrdT*CR);
-    ddNdtByVdcTp[sl0*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sl1*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sl2*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sr0*(this->n_)+this->nSpecies] += dqdT;
+    ddNdtByVdcTp[sl0*(this->alignN) + (this->nSpecies)] -= dqdT;
+    ddNdtByVdcTp[sl1*(this->alignN) + (this->nSpecies)] -= dqdT;
+    ddNdtByVdcTp[sl2*(this->alignN) + (this->nSpecies)] -= dqdT;
+    ddNdtByVdcTp[sr0*(this->alignN) + (this->nSpecies)] += dqdT;
 
     const double dCfdC0 = C[sl1]*C[sl2];
     const double dCfdC1 = C[sl0]*C[sl2];
     const double dCfdC2 = C[sl0]*C[sl1];
-    ddNdtByVdcTp[sl0*(this->n_)+sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sl1*(this->n_)+sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sl2*(this->n_)+sl0] -= Kf*dCfdC0;    
-    ddNdtByVdcTp[sr0*(this->n_)+sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sl0*(this->n_)+sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sl1*(this->n_)+sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sl2*(this->n_)+sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sr0*(this->n_)+sl1] += Kf*dCfdC1;
-    ddNdtByVdcTp[sl0*(this->n_)+sl2] -= Kf*dCfdC2;
-    ddNdtByVdcTp[sl1*(this->n_)+sl2] -= Kf*dCfdC2;
-    ddNdtByVdcTp[sl2*(this->n_)+sl2] -= Kf*dCfdC2;
-    ddNdtByVdcTp[sr0*(this->n_)+sl2] += Kf*dCfdC2;
+    ddNdtByVdcTp[sl0*(this->alignN)+sl0] -= Kf*dCfdC0;
+    ddNdtByVdcTp[sl1*(this->alignN)+sl0] -= Kf*dCfdC0;
+    ddNdtByVdcTp[sl2*(this->alignN)+sl0] -= Kf*dCfdC0;    
+    ddNdtByVdcTp[sr0*(this->alignN)+sl0] += Kf*dCfdC0;
+    ddNdtByVdcTp[sl0*(this->alignN)+sl1] -= Kf*dCfdC1;
+    ddNdtByVdcTp[sl1*(this->alignN)+sl1] -= Kf*dCfdC1;
+    ddNdtByVdcTp[sl2*(this->alignN)+sl1] -= Kf*dCfdC1;
+    ddNdtByVdcTp[sr0*(this->alignN)+sl1] += Kf*dCfdC1;
+    ddNdtByVdcTp[sl0*(this->alignN)+sl2] -= Kf*dCfdC2;
+    ddNdtByVdcTp[sl1*(this->alignN)+sl2] -= Kf*dCfdC2;
+    ddNdtByVdcTp[sl2*(this->alignN)+sl2] -= Kf*dCfdC2;
+    ddNdtByVdcTp[sr0*(this->alignN)+sl2] += Kf*dCfdC2;
 
-    if(i>=this->n_Arrhenius + this->n_NonEquilibriumReversibleArrhenius && i <this->nReactions-this->n_PlogReaction)
-    {
-        double* const* __restrict__ ArrRes = this->ArrPtr.data();
-        const unsigned int k = i - this->n_Arrhenius - this->n_NonEquilibriumReversibleArrhenius;
-        unsigned int remain = this->nSpecies%4;
+    if(i>=this->Ikf[2] && i <this->Ikf[6])
+    { 
+        const unsigned int k = i - this->Ikf[2];
 
         __m256d dKfdC = _mm256_set1_pd(this->dKfdC_[k]);
         __m256d CF_ = _mm256_set1_pd(CF);            
         __m256d CR_ = _mm256_set1_pd(CR);  
         double dKrdC = 0;
-        if(this->isIrreversible[i]==2)
-        {dKrdC = (this->dKfdC_[Itbr[4]+k]);}
-        else
-        {dKrdC = (this->dKfdC_[k]*invKc);}
+        dKrdC = (this->dKfdC_[k]*invKc);
         __m256d dKrdC_ = _mm256_set1_pd(dKrdC);
 
-        for(unsigned int j = 0; j < this->nSpecies-remain;j=j+4)
+        for(unsigned int j = 0; j < this->AlignSpecies;j=j+4)
         {
-            unsigned int j0 = j+0;
-            unsigned int j1 = j+1;
-            unsigned int j2 = j+2;
-            unsigned int j3 = j+3;
-
-            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*nSpecies+j0]);
+            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*this->AlignSpecies+j]);
 
             __m256d WdMdC = _mm256_mul_pd(_mm256_mul_pd(dKrdC_,dMdC),CR_);
             WdMdC = _mm256_fmsub_pd(_mm256_mul_pd(dKfdC,dMdC),CF_,WdMdC);
-            _mm256_storeu_pd(&ArrRes[0][0],WdMdC);
 
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sl2*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += ArrRes[0][0];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sl2*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += ArrRes[0][1];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sl1*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sl2*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += ArrRes[0][2];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sl1*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sl2*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sr0*(this->n_)+j3] += ArrRes[0][3];
+            __m256d sl0v = _mm256_loadu_pd(&ddNdtByVdcTp[sl0*(this->alignN)+j]);
+            __m256d sl1v = _mm256_loadu_pd(&ddNdtByVdcTp[sl1*(this->alignN)+j]);
+            __m256d sl2v = _mm256_loadu_pd(&ddNdtByVdcTp[sl2*(this->alignN)+j]);
+            __m256d sr0v = _mm256_loadu_pd(&ddNdtByVdcTp[sr0*(this->alignN)+j]);
+            sl0v = _mm256_sub_pd(sl0v,WdMdC);
+            sl1v = _mm256_sub_pd(sl1v,WdMdC);
+            sl2v = _mm256_sub_pd(sl2v,WdMdC);
+            sr0v = _mm256_add_pd(sr0v,WdMdC);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sl0*(this->alignN)+j],sl0v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sl1*(this->alignN)+j],sl1v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sl2*(this->alignN)+j],sl2v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sr0*(this->alignN)+j],sr0v);
         } 
-        if(remain==1)
-        {
-            unsigned int j = this->nSpecies-1;
-            const double WdMdC = this->dKfdC_[k]*this->dMdC(k,j)*CF - dKrdC*this->dMdC(k,j)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sl1*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sl2*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sr0*(this->n_)+j] += WdMdC;
-       
-        }
-        else if(remain==2)
-        {
-            unsigned int j0 = this->nSpecies-2;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl2*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;
-
-
-            unsigned int j1 = this->nSpecies-1;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl2*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;
-    
-        }
-        else if(remain ==3)
-        {
-            unsigned int j = this->nSpecies-3;
-            double WdMdC = this->dKfdC_[k]*this->dMdC(k,j)*CF - dKrdC*this->dMdC(k,j)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sl1*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sl2*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sr0*(this->n_)+j] += WdMdC;
-
-            j = j+1;
-            WdMdC = this->dKfdC_[k]*this->dMdC(k,j)*CF - dKrdC*this->dMdC(k,j)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sl1*(this->n_)+j] -= WdMdC;   
-            ddNdtByVdcTp[sl2*(this->n_)+j] -= WdMdC;          
-            ddNdtByVdcTp[sr0*(this->n_)+j] += WdMdC;   
-
-            j = j+1;
-            WdMdC = this->dKfdC_[k]*this->dMdC(k,j)*CF - dKrdC*this->dMdC(k,j)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sl1*(this->n_)+j] -= WdMdC;  
-            ddNdtByVdcTp[sl2*(this->n_)+j] -= WdMdC;          
-            ddNdtByVdcTp[sr0*(this->n_)+j] += WdMdC;    
-
-        }      
-    
     }  
-}             
-
-void inline OptReaction::JF31
-(
-    unsigned int i,
-    double Kf,
-    double dKfdT,
-    const double* __restrict__ C,
-    double* __restrict__ dNdtByV,
-    double* __restrict__ ddNdtByVdcTp
-)const noexcept
-{
-    const unsigned int sl0 = lhsSpeciesIndex[lhsOffset[i]+0];
-    const unsigned int sl1 = lhsSpeciesIndex[lhsOffset[i]+1];
-    const unsigned int sl2 = lhsSpeciesIndex[lhsOffset[i]+2];
-    const unsigned int sr0 = rhsSpeciesIndex[rhsOffset[i]+0];
-
-    double Kr = 0;
-    double dKrdT = 0;
-
-    Kr = this->Kf_[i - Ikf[1] + Ikf[9]];
-    dKrdT = this->dKfdT_[i - Ikf[1] + Ikf[9]];
-    const double dCrdC0 = 1;
-    ddNdtByVdcTp[sl0*(this->n_)+sr0] -= (-Kr*dCrdC0);
-    ddNdtByVdcTp[sl1*(this->n_)+sr0] -= (-Kr*dCrdC0);
-    ddNdtByVdcTp[sl2*(this->n_)+sr0] -= (-Kr*dCrdC0);    
-    ddNdtByVdcTp[sr0*(this->n_)+sr0] += (-Kr*dCrdC0);  
-    
-    const double CF = C[sl0]*C[sl1]*C[sl2];
-    const double CR = C[sr0];
-
-    const double q = (Kf*CF) - (Kr*CR);
-    dNdtByV[sl0] = dNdtByV[sl0] - q; 
-    dNdtByV[sl1] = dNdtByV[sl1] - q;
-    dNdtByV[sl2] = dNdtByV[sl2] - q;
-    dNdtByV[sr0] = dNdtByV[sr0] + q;
-
-    const double dqdT = (dKfdT*CF)-(dKrdT*CR);
-    ddNdtByVdcTp[sl0*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sl1*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sl2*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sr0*(this->n_)+this->nSpecies] += dqdT;
-
-    const double dCfdC0 = C[sl1]*C[sl2];
-    const double dCfdC1 = C[sl0]*C[sl2];
-    const double dCfdC2 = C[sl0]*C[sl1];
-    ddNdtByVdcTp[sl0*(this->n_)+sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sl1*(this->n_)+sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sl2*(this->n_)+sl0] -= Kf*dCfdC0;    
-    ddNdtByVdcTp[sr0*(this->n_)+sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sl0*(this->n_)+sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sl1*(this->n_)+sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sl2*(this->n_)+sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sr0*(this->n_)+sl1] += Kf*dCfdC1;
-    ddNdtByVdcTp[sl0*(this->n_)+sl2] -= Kf*dCfdC2;
-    ddNdtByVdcTp[sl1*(this->n_)+sl2] -= Kf*dCfdC2;
-    ddNdtByVdcTp[sl2*(this->n_)+sl2] -= Kf*dCfdC2;
-    ddNdtByVdcTp[sr0*(this->n_)+sl2] += Kf*dCfdC2;
-
-    if(i>=this->n_Arrhenius + this->n_NonEquilibriumReversibleArrhenius && i <this->nReactions-this->n_PlogReaction)
-    {
-        double* const* __restrict__ ArrRes = this->ArrPtr.data();
-        const unsigned int k = i - this->n_Arrhenius - this->n_NonEquilibriumReversibleArrhenius;
-        unsigned int remain = this->nSpecies%4;
-
-        __m256d dKfdC = _mm256_set1_pd(this->dKfdC_[k]);
-        __m256d CF_ = _mm256_set1_pd(CF);            
-        __m256d CR_ = _mm256_set1_pd(CR);  
-        double dKrdC = 0;
-        dKrdC = (this->dKfdC_[Itbr[4]+k]);
-        __m256d dKrdC_ = _mm256_set1_pd(dKrdC);
-
-        for(unsigned int j = 0; j < this->nSpecies-remain;j=j+4)
-        {
-            unsigned int j0 = j+0;
-            unsigned int j1 = j+1;
-            unsigned int j2 = j+2;
-            unsigned int j3 = j+3;
-
-            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*nSpecies+j0]);
-
-            __m256d WdMdC = _mm256_mul_pd(_mm256_mul_pd(dKrdC_,dMdC),CR_);
-            WdMdC = _mm256_fmsub_pd(_mm256_mul_pd(dKfdC,dMdC),CF_,WdMdC);
-            _mm256_storeu_pd(&ArrRes[0][0],WdMdC);
-
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sl2*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += ArrRes[0][0];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sl2*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += ArrRes[0][1];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sl1*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sl2*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += ArrRes[0][2];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sl1*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sl2*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sr0*(this->n_)+j3] += ArrRes[0][3];
-        } 
-        if(remain==1)
-        {
-            unsigned int j = this->nSpecies-1;
-            const double WdMdC = this->dKfdC_[k]*this->dMdC(k,j)*CF - dKrdC*this->dMdC(k,j)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sl1*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sl2*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sr0*(this->n_)+j] += WdMdC;
-       
-        }
-        else if(remain==2)
-        {
-            unsigned int j0 = this->nSpecies-2;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl2*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;
-
-
-            unsigned int j1 = this->nSpecies-1;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl2*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;
-    
-        }
-        else if(remain ==3)
-        {
-            unsigned int j = this->nSpecies-3;
-            double WdMdC = this->dKfdC_[k]*this->dMdC(k,j)*CF - dKrdC*this->dMdC(k,j)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sl1*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sl2*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sr0*(this->n_)+j] += WdMdC;
-
-            j = j+1;
-            WdMdC = this->dKfdC_[k]*this->dMdC(k,j)*CF - dKrdC*this->dMdC(k,j)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sl1*(this->n_)+j] -= WdMdC;   
-            ddNdtByVdcTp[sl2*(this->n_)+j] -= WdMdC;          
-            ddNdtByVdcTp[sr0*(this->n_)+j] += WdMdC;   
-
-            j = j+1;
-            WdMdC = this->dKfdC_[k]*this->dMdC(k,j)*CF - dKrdC*this->dMdC(k,j)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sl1*(this->n_)+j] -= WdMdC;  
-            ddNdtByVdcTp[sl2*(this->n_)+j] -= WdMdC;          
-            ddNdtByVdcTp[sr0*(this->n_)+j] += WdMdC;    
-
-        }      
-    
-    }  
-}             
+}
 
 void inline OptReaction::JF32
 (
@@ -2182,11 +810,11 @@ void inline OptReaction::JF32
 {
 
 
-    const unsigned int sl0 = lhsSpeciesIndex[lhsOffset[i]+0];
-    const unsigned int sl1 = lhsSpeciesIndex[lhsOffset[i]+1];
-    const unsigned int sl2 = lhsSpeciesIndex[lhsOffset[i]+2];
-    const unsigned int sr0 = rhsSpeciesIndex[rhsOffset[i]+0];
-    const unsigned int sr1 = rhsSpeciesIndex[rhsOffset[i]+1];
+    const unsigned int sl0 = lhsSpeciesIndex1D[lhsOffset[i]+0];
+    const unsigned int sl1 = lhsSpeciesIndex1D[lhsOffset[i]+1];
+    const unsigned int sl2 = lhsSpeciesIndex1D[lhsOffset[i]+2];
+    const unsigned int sr0 = rhsSpeciesIndex1D[rhsOffset[i]+0];
+    const unsigned int sr1 = rhsSpeciesIndex1D[rhsOffset[i]+1];
 
 
     double Kr = 0;
@@ -2205,16 +833,34 @@ void inline OptReaction::JF32
         
         const double dCrdC0 = C[sr1];
         const double dCrdC1 = C[sr0];
-        ddNdtByVdcTp[sl0*(this->n_)+sr0] -= (-Kr*dCrdC0);
-        ddNdtByVdcTp[sl1*(this->n_)+sr0] -= (-Kr*dCrdC0);
-        ddNdtByVdcTp[sl2*(this->n_)+sr0] -= (-Kr*dCrdC0);    
-        ddNdtByVdcTp[sr0*(this->n_)+sr0] += (-Kr*dCrdC0);
-        ddNdtByVdcTp[sr1*(this->n_)+sr0] += (-Kr*dCrdC0);
-        ddNdtByVdcTp[sl0*(this->n_)+sr1] -= (-Kr*dCrdC1);
-        ddNdtByVdcTp[sl1*(this->n_)+sr1] -= (-Kr*dCrdC1);
-        ddNdtByVdcTp[sl2*(this->n_)+sr1] -= (-Kr*dCrdC1);
-        ddNdtByVdcTp[sr0*(this->n_)+sr1] += (-Kr*dCrdC1);
-        ddNdtByVdcTp[sr1*(this->n_)+sr1] += (-Kr*dCrdC1);  
+        ddNdtByVdcTp[sl0*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl1*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl2*(this->alignN)+sr0] -= (-Kr*dCrdC0);    
+        ddNdtByVdcTp[sr0*(this->alignN)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr1*(this->alignN)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl0*(this->alignN)+sr1] -= (-Kr*dCrdC1);
+        ddNdtByVdcTp[sl1*(this->alignN)+sr1] -= (-Kr*dCrdC1);
+        ddNdtByVdcTp[sl2*(this->alignN)+sr1] -= (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr1] += (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr1*(this->alignN)+sr1] += (-Kr*dCrdC1);  
+    }
+    else if(this->isIrreversible[i]==1)
+    {
+        Kr = this->Kf_[i - Ikf[1] + Ikf[9]];
+        dKrdT = this->dKfdT_[i - Ikf[1] + Ikf[9]];
+        invKc = Kr/Kf;
+        const double dCrdC0 = C[sr1];
+        const double dCrdC1 = C[sr0];
+        ddNdtByVdcTp[sl0*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl1*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl2*(this->alignN)+sr0] -= (-Kr*dCrdC0);    
+        ddNdtByVdcTp[sr0*(this->alignN)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr1*(this->alignN)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl0*(this->alignN)+sr1] -= (-Kr*dCrdC1);
+        ddNdtByVdcTp[sl1*(this->alignN)+sr1] -= (-Kr*dCrdC1);
+        ddNdtByVdcTp[sl2*(this->alignN)+sr1] -= (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr1] += (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr1*(this->alignN)+sr1] += (-Kr*dCrdC1);  
     }
     const double CF = C[sl0]*C[sl1]*C[sl2];
     const double CR = C[sr0]*C[sr1];
@@ -2228,36 +874,34 @@ void inline OptReaction::JF32
     dNdtByV[sr1] = dNdtByV[sr1] + q;
 
     const double dqdT = (dKfdT*CF)-(dKrdT*CR);
-    ddNdtByVdcTp[sl0*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sl1*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sl2*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sr0*(this->n_)+this->nSpecies] += dqdT;
-    ddNdtByVdcTp[sr1*(this->n_)+this->nSpecies] += dqdT;
+    ddNdtByVdcTp[sl0*(this->alignN) + (this->nSpecies)] -= dqdT;
+    ddNdtByVdcTp[sl1*(this->alignN) + (this->nSpecies)] -= dqdT;
+    ddNdtByVdcTp[sl2*(this->alignN) + (this->nSpecies)] -= dqdT;
+    ddNdtByVdcTp[sr0*(this->alignN) + (this->nSpecies)] += dqdT;
+    ddNdtByVdcTp[sr1*(this->alignN) + (this->nSpecies)] += dqdT;
     
     const double dCfdC0 = C[sl1]*C[sl2];
     const double dCfdC1 = C[sl0]*C[sl2];
     const double dCfdC2 = C[sl0]*C[sl1];
-    ddNdtByVdcTp[sl0*(this->n_)+sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sl1*(this->n_)+sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sl2*(this->n_)+sl0] -= Kf*dCfdC0;    
-    ddNdtByVdcTp[sr0*(this->n_)+sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sr1*(this->n_)+sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sl0*(this->n_)+sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sl1*(this->n_)+sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sl2*(this->n_)+sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sr0*(this->n_)+sl1] += Kf*dCfdC1;
-    ddNdtByVdcTp[sr1*(this->n_)+sl1] += Kf*dCfdC1;
-    ddNdtByVdcTp[sl0*(this->n_)+sl2] -= Kf*dCfdC2;
-    ddNdtByVdcTp[sl1*(this->n_)+sl2] -= Kf*dCfdC2;
-    ddNdtByVdcTp[sl2*(this->n_)+sl2] -= Kf*dCfdC2;
-    ddNdtByVdcTp[sr0*(this->n_)+sl2] += Kf*dCfdC2;
-    ddNdtByVdcTp[sr1*(this->n_)+sl2] += Kf*dCfdC2;
+    ddNdtByVdcTp[sl0*(this->alignN)+sl0] -= Kf*dCfdC0;
+    ddNdtByVdcTp[sl1*(this->alignN)+sl0] -= Kf*dCfdC0;
+    ddNdtByVdcTp[sl2*(this->alignN)+sl0] -= Kf*dCfdC0;    
+    ddNdtByVdcTp[sr0*(this->alignN)+sl0] += Kf*dCfdC0;
+    ddNdtByVdcTp[sr1*(this->alignN)+sl0] += Kf*dCfdC0;
+    ddNdtByVdcTp[sl0*(this->alignN)+sl1] -= Kf*dCfdC1;
+    ddNdtByVdcTp[sl1*(this->alignN)+sl1] -= Kf*dCfdC1;
+    ddNdtByVdcTp[sl2*(this->alignN)+sl1] -= Kf*dCfdC1;
+    ddNdtByVdcTp[sr0*(this->alignN)+sl1] += Kf*dCfdC1;
+    ddNdtByVdcTp[sr1*(this->alignN)+sl1] += Kf*dCfdC1;
+    ddNdtByVdcTp[sl0*(this->alignN)+sl2] -= Kf*dCfdC2;
+    ddNdtByVdcTp[sl1*(this->alignN)+sl2] -= Kf*dCfdC2;
+    ddNdtByVdcTp[sl2*(this->alignN)+sl2] -= Kf*dCfdC2;
+    ddNdtByVdcTp[sr0*(this->alignN)+sl2] += Kf*dCfdC2;
+    ddNdtByVdcTp[sr1*(this->alignN)+sl2] += Kf*dCfdC2;
 
-    if(i>=this->n_Arrhenius + this->n_NonEquilibriumReversibleArrhenius && i <this->nReactions-this->n_PlogReaction)
-    {
-        double* const* __restrict__ ArrRes = this->ArrPtr.data();
-        const unsigned int k = i - this->n_Arrhenius - this->n_NonEquilibriumReversibleArrhenius;
-        unsigned int remain = this->nSpecies%4;
+    if(i>=this->Ikf[2] && i <this->Ikf[6])
+    { 
+        const unsigned int k = i - this->Ikf[2];
 
         __m256d dKfdC = _mm256_set1_pd(this->dKfdC_[k]);
         __m256d CF_ = _mm256_set1_pd(CF);            
@@ -2267,279 +911,30 @@ void inline OptReaction::JF32
         dKrdC = (this->dKfdC_[k]*invKc);
         __m256d dKrdC_ = _mm256_set1_pd(dKrdC);
 
-        for(unsigned int j = 0; j < this->nSpecies-remain;j=j+4)
+        for(unsigned int j = 0; j < this->AlignSpecies;j=j+4)
         {
-            unsigned int j0 = j+0;
-            unsigned int j1 = j+1;
-            unsigned int j2 = j+2;
-            unsigned int j3 = j+3;
-
-            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*nSpecies+j0]);
+            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*this->AlignSpecies+j]);
             __m256d WdMdC = _mm256_mul_pd(_mm256_mul_pd(dKrdC_,dMdC),CR_);
             WdMdC = _mm256_fmsub_pd(_mm256_mul_pd(dKfdC,dMdC),CF_,WdMdC);
-            _mm256_storeu_pd(&ArrRes[0][0],WdMdC);
 
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sl2*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += ArrRes[0][0];
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += ArrRes[0][0];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sl2*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += ArrRes[0][1];
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += ArrRes[0][1];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sl1*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sl2*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += ArrRes[0][2];
-            ddNdtByVdcTp[sr1*(this->n_)+j2] += ArrRes[0][2];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sl1*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sl2*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sr0*(this->n_)+j3] += ArrRes[0][3];
-            ddNdtByVdcTp[sr1*(this->n_)+j3] += ArrRes[0][3];
-
+            __m256d sl0v = _mm256_loadu_pd(&ddNdtByVdcTp[sl0*(this->alignN)+j]);
+            __m256d sl1v = _mm256_loadu_pd(&ddNdtByVdcTp[sl1*(this->alignN)+j]);
+            __m256d sl2v = _mm256_loadu_pd(&ddNdtByVdcTp[sl2*(this->alignN)+j]);
+            __m256d sr0v = _mm256_loadu_pd(&ddNdtByVdcTp[sr0*(this->alignN)+j]);
+            __m256d sr1v = _mm256_loadu_pd(&ddNdtByVdcTp[sr1*(this->alignN)+j]);
+            sl0v = _mm256_sub_pd(sl0v,WdMdC);
+            sl1v = _mm256_sub_pd(sl1v,WdMdC);
+            sl2v = _mm256_sub_pd(sl2v,WdMdC);
+            sr0v = _mm256_add_pd(sr0v,WdMdC);
+            sr1v = _mm256_add_pd(sr1v,WdMdC);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sl0*(this->alignN)+j],sl0v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sl1*(this->alignN)+j],sl1v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sl2*(this->alignN)+j],sl2v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sr0*(this->alignN)+j],sr0v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sr1*(this->alignN)+j],sr1v);
         } 
-        if(remain==1)
-        {
-            unsigned int j = this->nSpecies-1;
-            const double WdMdC = this->dKfdC_[k]*this->dMdC(k,j)*CF - dKrdC*this->dMdC(k,j)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sl1*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sl2*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sr0*(this->n_)+j] += WdMdC;
-            ddNdtByVdcTp[sr1*(this->n_)+j] += WdMdC;
-       
-        }
-        else if(remain==2)
-        {
-            unsigned int j0 = this->nSpecies-2;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl2*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += WdMdC0;
-
-            unsigned int j1 = this->nSpecies-1;
-            double WdMdC1  = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl2*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += WdMdC1;
-        }
-        else if(remain ==3)
-        {
-            unsigned int j0 = this->nSpecies-3;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl2*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += WdMdC0;
-
-            unsigned int j1 = this->nSpecies-2;
-            double WdMdC1  = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl2*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += WdMdC1;
-
-            unsigned int j2 = this->nSpecies-1;
-            double WdMdC2  = this->dKfdC_[k]*this->dMdC(k,j2)*CF - dKrdC*this->dMdC(k,j2)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= WdMdC2;
-            ddNdtByVdcTp[sl1*(this->n_)+j2] -= WdMdC2;
-            ddNdtByVdcTp[sl2*(this->n_)+j2] -= WdMdC2;
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += WdMdC2;
-            ddNdtByVdcTp[sr1*(this->n_)+j2] += WdMdC2;
-        }      
-
     }  
 }    
-
-void inline OptReaction::JF32
-(
-    unsigned int i,
-    double Kf,
-    double dKfdT,
-    const double* __restrict__ C,
-    double* __restrict__ dNdtByV,
-    double* __restrict__ ddNdtByVdcTp
-)const noexcept
-{
-    const unsigned int sl0 = lhsSpeciesIndex[lhsOffset[i]+0];
-    const unsigned int sl1 = lhsSpeciesIndex[lhsOffset[i]+1];
-    const unsigned int sl2 = lhsSpeciesIndex[lhsOffset[i]+2];
-    const unsigned int sr0 = rhsSpeciesIndex[rhsOffset[i]+0];
-    const unsigned int sr1 = rhsSpeciesIndex[rhsOffset[i]+1];
-
-    double Kr = 0;
-    double dKrdT = 0;
-    Kr = this->Kf_[i - Ikf[1] + Ikf[9]];
-    dKrdT = this->dKfdT_[i - Ikf[1] + Ikf[9]];
-
-    const double dCrdC0 = C[sr1];
-    const double dCrdC1 = C[sr0];
-    ddNdtByVdcTp[sl0*(this->n_)+sr0] -= (-Kr*dCrdC0);
-    ddNdtByVdcTp[sl1*(this->n_)+sr0] -= (-Kr*dCrdC0);
-    ddNdtByVdcTp[sl2*(this->n_)+sr0] -= (-Kr*dCrdC0);    
-    ddNdtByVdcTp[sr0*(this->n_)+sr0] += (-Kr*dCrdC0);
-    ddNdtByVdcTp[sr1*(this->n_)+sr0] += (-Kr*dCrdC0);
-    ddNdtByVdcTp[sl0*(this->n_)+sr1] -= (-Kr*dCrdC1);
-    ddNdtByVdcTp[sl1*(this->n_)+sr1] -= (-Kr*dCrdC1);
-    ddNdtByVdcTp[sl2*(this->n_)+sr1] -= (-Kr*dCrdC1);
-    ddNdtByVdcTp[sr0*(this->n_)+sr1] += (-Kr*dCrdC1);
-    ddNdtByVdcTp[sr1*(this->n_)+sr1] += (-Kr*dCrdC1);  
-
-    const double CF = C[sl0]*C[sl1]*C[sl2];
-    const double CR = C[sr0]*C[sr1];
-    
-    const double q = (Kf*CF) - (Kr*CR);
-    dNdtByV[sl0] = dNdtByV[sl0] - q; 
-    dNdtByV[sl1] = dNdtByV[sl1] - q;
-    dNdtByV[sl2] = dNdtByV[sl2] - q;
-    dNdtByV[sr0] = dNdtByV[sr0] + q;
-    dNdtByV[sr1] = dNdtByV[sr1] + q;  
-
-    const double dqdT = (dKfdT*CF)-(dKrdT*CR);
-    ddNdtByVdcTp[sl0*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sl1*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sl2*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sr0*(this->n_)+this->nSpecies] += dqdT;
-    ddNdtByVdcTp[sr1*(this->n_)+this->nSpecies] += dqdT;
-
-    const double dCfdC0 = C[sl1]*C[sl2];
-    const double dCfdC1 = C[sl0]*C[sl2];
-    const double dCfdC2 = C[sl0]*C[sl1];
-    ddNdtByVdcTp[sl0*(this->n_)+sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sl1*(this->n_)+sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sl2*(this->n_)+sl0] -= Kf*dCfdC0;    
-    ddNdtByVdcTp[sr0*(this->n_)+sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sr1*(this->n_)+sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sl0*(this->n_)+sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sl1*(this->n_)+sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sl2*(this->n_)+sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sr0*(this->n_)+sl1] += Kf*dCfdC1;
-    ddNdtByVdcTp[sr1*(this->n_)+sl1] += Kf*dCfdC1;
-    ddNdtByVdcTp[sl0*(this->n_)+sl2] -= Kf*dCfdC2;
-    ddNdtByVdcTp[sl1*(this->n_)+sl2] -= Kf*dCfdC2;
-    ddNdtByVdcTp[sl2*(this->n_)+sl2] -= Kf*dCfdC2;
-    ddNdtByVdcTp[sr0*(this->n_)+sl2] += Kf*dCfdC2;
-    ddNdtByVdcTp[sr1*(this->n_)+sl2] += Kf*dCfdC2;
-
-    if(i>=this->n_Arrhenius + this->n_NonEquilibriumReversibleArrhenius && i <this->nReactions-this->n_PlogReaction)
-    {
-        double* const* __restrict__ ArrRes = this->ArrPtr.data();
-        const unsigned int k = i - this->n_Arrhenius - this->n_NonEquilibriumReversibleArrhenius;
-        unsigned int remain = this->nSpecies%4;
-
-        __m256d dKfdC = _mm256_set1_pd(this->dKfdC_[k]);
-        __m256d CF_ = _mm256_set1_pd(CF);            
-        __m256d CR_ = _mm256_set1_pd(CR);  
-        double dKrdC = 0;
-        dKrdC = (this->dKfdC_[Itbr[4]+k]);
-        __m256d dKrdC_ = _mm256_set1_pd(dKrdC);
-
-        for(unsigned int j = 0; j < this->nSpecies-remain;j=j+4)
-        {
-            unsigned int j0 = j+0;
-            unsigned int j1 = j+1;
-            unsigned int j2 = j+2;
-            unsigned int j3 = j+3;
-
-            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*nSpecies+j0]);
-            __m256d WdMdC = _mm256_mul_pd(_mm256_mul_pd(dKrdC_,dMdC),CR_);
-            WdMdC = _mm256_fmsub_pd(_mm256_mul_pd(dKfdC,dMdC),CF_,WdMdC);
-            _mm256_storeu_pd(&ArrRes[0][0],WdMdC);
-
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sl2*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += ArrRes[0][0];
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += ArrRes[0][0];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sl2*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += ArrRes[0][1];
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += ArrRes[0][1];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sl1*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sl2*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += ArrRes[0][2];
-            ddNdtByVdcTp[sr1*(this->n_)+j2] += ArrRes[0][2];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sl1*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sl2*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sr0*(this->n_)+j3] += ArrRes[0][3];
-            ddNdtByVdcTp[sr1*(this->n_)+j3] += ArrRes[0][3];
-
-        } 
-        if(remain==1)
-        {
-            unsigned int j = this->nSpecies-1;
-            const double WdMdC = this->dKfdC_[k]*this->dMdC(k,j)*CF - dKrdC*this->dMdC(k,j)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sl1*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sl2*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sr0*(this->n_)+j] += WdMdC;
-            ddNdtByVdcTp[sr1*(this->n_)+j] += WdMdC;
-       
-        }
-        else if(remain==2)
-        {
-            unsigned int j0 = this->nSpecies-2;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl2*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += WdMdC0;
-
-            unsigned int j1 = this->nSpecies-1;
-            double WdMdC1  = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl2*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += WdMdC1;
-        }
-        else if(remain ==3)
-        {
-            unsigned int j0 = this->nSpecies-3;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl2*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += WdMdC0;
-
-            unsigned int j1 = this->nSpecies-2;
-            double WdMdC1  = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl2*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += WdMdC1;
-
-            unsigned int j2 = this->nSpecies-1;
-            double WdMdC2  = this->dKfdC_[k]*this->dMdC(k,j2)*CF - dKrdC*this->dMdC(k,j2)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= WdMdC2;
-            ddNdtByVdcTp[sl1*(this->n_)+j2] -= WdMdC2;
-            ddNdtByVdcTp[sl2*(this->n_)+j2] -= WdMdC2;
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += WdMdC2;
-            ddNdtByVdcTp[sr1*(this->n_)+j2] += WdMdC2;
-        }      
-    }  
-}  
 
 void inline OptReaction::JF33
 (
@@ -2554,12 +949,12 @@ void inline OptReaction::JF33
 )const noexcept
 {
 
-    const unsigned int sl0 = lhsSpeciesIndex[lhsOffset[i]+0];
-    const unsigned int sl1 = lhsSpeciesIndex[lhsOffset[i]+1];
-    const unsigned int sl2 = lhsSpeciesIndex[lhsOffset[i]+2];
-    const unsigned int sr0 = rhsSpeciesIndex[rhsOffset[i]+0];
-    const unsigned int sr1 = rhsSpeciesIndex[rhsOffset[i]+1];
-    const unsigned int sr2 = rhsSpeciesIndex[rhsOffset[i]+2];
+    const unsigned int sl0 = lhsSpeciesIndex1D[lhsOffset[i]+0];
+    const unsigned int sl1 = lhsSpeciesIndex1D[lhsOffset[i]+1];
+    const unsigned int sl2 = lhsSpeciesIndex1D[lhsOffset[i]+2];
+    const unsigned int sr0 = rhsSpeciesIndex1D[rhsOffset[i]+0];
+    const unsigned int sr1 = rhsSpeciesIndex1D[rhsOffset[i]+1];
+    const unsigned int sr2 = rhsSpeciesIndex1D[rhsOffset[i]+2];
 
     double Kr = 0;
     double dKrdT = 0;
@@ -2579,24 +974,52 @@ void inline OptReaction::JF33
         const double dCrdC0 = C[sr1]*C[sr2];
         const double dCrdC1 = C[sr0]*C[sr2];
         const double dCrdC2 = C[sr0]*C[sr1];  
-        ddNdtByVdcTp[sl0*(this->n_)+sr0] -= (-Kr*dCrdC0);
-        ddNdtByVdcTp[sl1*(this->n_)+sr0] -= (-Kr*dCrdC0);
-        ddNdtByVdcTp[sl2*(this->n_)+sr0] -= (-Kr*dCrdC0);    
-        ddNdtByVdcTp[sr0*(this->n_)+sr0] += (-Kr*dCrdC0);
-        ddNdtByVdcTp[sr1*(this->n_)+sr0] += (-Kr*dCrdC0);
-        ddNdtByVdcTp[sr2*(this->n_)+sr0] += (-Kr*dCrdC0);
-        ddNdtByVdcTp[sl0*(this->n_)+sr1] -= (-Kr*dCrdC1);
-        ddNdtByVdcTp[sl1*(this->n_)+sr1] -= (-Kr*dCrdC1);
-        ddNdtByVdcTp[sl2*(this->n_)+sr1] -= (-Kr*dCrdC1);
-        ddNdtByVdcTp[sr0*(this->n_)+sr1] += (-Kr*dCrdC1);
-        ddNdtByVdcTp[sr1*(this->n_)+sr1] += (-Kr*dCrdC1);
-        ddNdtByVdcTp[sr2*(this->n_)+sr1] += (-Kr*dCrdC1);
-        ddNdtByVdcTp[sl0*(this->n_)+sr2] -= (-Kr*dCrdC2);
-        ddNdtByVdcTp[sl1*(this->n_)+sr2] -= (-Kr*dCrdC2);
-        ddNdtByVdcTp[sl2*(this->n_)+sr2] -= (-Kr*dCrdC2);
-        ddNdtByVdcTp[sr0*(this->n_)+sr2] += (-Kr*dCrdC2);
-        ddNdtByVdcTp[sr1*(this->n_)+sr2] += (-Kr*dCrdC2);
-        ddNdtByVdcTp[sr2*(this->n_)+sr2] += (-Kr*dCrdC2); 
+        ddNdtByVdcTp[sl0*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl1*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl2*(this->alignN)+sr0] -= (-Kr*dCrdC0);    
+        ddNdtByVdcTp[sr0*(this->alignN)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr1*(this->alignN)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr2*(this->alignN)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl0*(this->alignN)+sr1] -= (-Kr*dCrdC1);
+        ddNdtByVdcTp[sl1*(this->alignN)+sr1] -= (-Kr*dCrdC1);
+        ddNdtByVdcTp[sl2*(this->alignN)+sr1] -= (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr1] += (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr1*(this->alignN)+sr1] += (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr2*(this->alignN)+sr1] += (-Kr*dCrdC1);
+        ddNdtByVdcTp[sl0*(this->alignN)+sr2] -= (-Kr*dCrdC2);
+        ddNdtByVdcTp[sl1*(this->alignN)+sr2] -= (-Kr*dCrdC2);
+        ddNdtByVdcTp[sl2*(this->alignN)+sr2] -= (-Kr*dCrdC2);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr2] += (-Kr*dCrdC2);
+        ddNdtByVdcTp[sr1*(this->alignN)+sr2] += (-Kr*dCrdC2);
+        ddNdtByVdcTp[sr2*(this->alignN)+sr2] += (-Kr*dCrdC2); 
+    }
+    else if(this->isIrreversible[i]==2)
+    {
+        Kr = this->Kf_[i - Ikf[1] + Ikf[9]];
+        dKrdT = this->dKfdT_[i - Ikf[1] + Ikf[9]];
+        invKc = Kr/Kf;
+        const double dCrdC0 = C[sr1]*C[sr2];
+        const double dCrdC1 = C[sr0]*C[sr2];
+        const double dCrdC2 = C[sr0]*C[sr1];  
+
+        ddNdtByVdcTp[sl0*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl1*(this->alignN)+sr0] -= (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl2*(this->alignN)+sr0] -= (-Kr*dCrdC0);    
+        ddNdtByVdcTp[sr0*(this->alignN)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr1*(this->alignN)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sr2*(this->alignN)+sr0] += (-Kr*dCrdC0);
+        ddNdtByVdcTp[sl0*(this->alignN)+sr1] -= (-Kr*dCrdC1);
+        ddNdtByVdcTp[sl1*(this->alignN)+sr1] -= (-Kr*dCrdC1);
+        ddNdtByVdcTp[sl2*(this->alignN)+sr1] -= (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr1] += (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr1*(this->alignN)+sr1] += (-Kr*dCrdC1);
+        ddNdtByVdcTp[sr2*(this->alignN)+sr1] += (-Kr*dCrdC1);
+        ddNdtByVdcTp[sl0*(this->alignN)+sr2] -= (-Kr*dCrdC2);
+        ddNdtByVdcTp[sl1*(this->alignN)+sr2] -= (-Kr*dCrdC2);
+        ddNdtByVdcTp[sl2*(this->alignN)+sr2] -= (-Kr*dCrdC2);
+        ddNdtByVdcTp[sr0*(this->alignN)+sr2] += (-Kr*dCrdC2);
+        ddNdtByVdcTp[sr1*(this->alignN)+sr2] += (-Kr*dCrdC2);
+        ddNdtByVdcTp[sr2*(this->alignN)+sr2] += (-Kr*dCrdC2); 
     }
 
     const double CF = C[sl0]*C[sl1]*C[sl2];
@@ -2611,41 +1034,38 @@ void inline OptReaction::JF33
     dNdtByV[sr2] = dNdtByV[sr2] + q;
 
     const double dqdT = (dKfdT*CF)-(dKrdT*CR);
-    ddNdtByVdcTp[sl0*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sl1*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sl2*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sr0*(this->n_)+this->nSpecies] += dqdT;
-    ddNdtByVdcTp[sr1*(this->n_)+this->nSpecies] += dqdT;
-    ddNdtByVdcTp[sr2*(this->n_)+this->nSpecies] += dqdT;
+    ddNdtByVdcTp[sl0*(this->alignN) + (this->nSpecies)] -= dqdT;
+    ddNdtByVdcTp[sl1*(this->alignN) + (this->nSpecies)] -= dqdT;
+    ddNdtByVdcTp[sl2*(this->alignN) + (this->nSpecies)] -= dqdT;
+    ddNdtByVdcTp[sr0*(this->alignN) + (this->nSpecies)] += dqdT;
+    ddNdtByVdcTp[sr1*(this->alignN) + (this->nSpecies)] += dqdT;
+    ddNdtByVdcTp[sr2*(this->alignN) + (this->nSpecies)] += dqdT;
     
     const double dCfdC0 = C[sl1]*C[sl2];
     const double dCfdC1 = C[sl0]*C[sl2];
     const double dCfdC2 = C[sl0]*C[sl1];
-    ddNdtByVdcTp[sl0*(this->n_)+sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sl1*(this->n_)+sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sl2*(this->n_)+sl0] -= Kf*dCfdC0;    
-    ddNdtByVdcTp[sr0*(this->n_)+sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sr1*(this->n_)+sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sr2*(this->n_)+sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sl0*(this->n_)+sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sl1*(this->n_)+sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sl2*(this->n_)+sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sr0*(this->n_)+sl1] += Kf*dCfdC1;
-    ddNdtByVdcTp[sr1*(this->n_)+sl1] += Kf*dCfdC1;
-    ddNdtByVdcTp[sr2*(this->n_)+sl1] += Kf*dCfdC1;
-    ddNdtByVdcTp[sl0*(this->n_)+sl2] -= Kf*dCfdC2;
-    ddNdtByVdcTp[sl1*(this->n_)+sl2] -= Kf*dCfdC2;
-    ddNdtByVdcTp[sl2*(this->n_)+sl2] -= Kf*dCfdC2;
-    ddNdtByVdcTp[sr0*(this->n_)+sl2] += Kf*dCfdC2;
-    ddNdtByVdcTp[sr1*(this->n_)+sl2] += Kf*dCfdC2;
-    ddNdtByVdcTp[sr2*(this->n_)+sl2] += Kf*dCfdC2;
+    ddNdtByVdcTp[sl0*(this->alignN)+sl0] -= Kf*dCfdC0;
+    ddNdtByVdcTp[sl1*(this->alignN)+sl0] -= Kf*dCfdC0;
+    ddNdtByVdcTp[sl2*(this->alignN)+sl0] -= Kf*dCfdC0;    
+    ddNdtByVdcTp[sr0*(this->alignN)+sl0] += Kf*dCfdC0;
+    ddNdtByVdcTp[sr1*(this->alignN)+sl0] += Kf*dCfdC0;
+    ddNdtByVdcTp[sr2*(this->alignN)+sl0] += Kf*dCfdC0;
+    ddNdtByVdcTp[sl0*(this->alignN)+sl1] -= Kf*dCfdC1;
+    ddNdtByVdcTp[sl1*(this->alignN)+sl1] -= Kf*dCfdC1;
+    ddNdtByVdcTp[sl2*(this->alignN)+sl1] -= Kf*dCfdC1;
+    ddNdtByVdcTp[sr0*(this->alignN)+sl1] += Kf*dCfdC1;
+    ddNdtByVdcTp[sr1*(this->alignN)+sl1] += Kf*dCfdC1;
+    ddNdtByVdcTp[sr2*(this->alignN)+sl1] += Kf*dCfdC1;
+    ddNdtByVdcTp[sl0*(this->alignN)+sl2] -= Kf*dCfdC2;
+    ddNdtByVdcTp[sl1*(this->alignN)+sl2] -= Kf*dCfdC2;
+    ddNdtByVdcTp[sl2*(this->alignN)+sl2] -= Kf*dCfdC2;
+    ddNdtByVdcTp[sr0*(this->alignN)+sl2] += Kf*dCfdC2;
+    ddNdtByVdcTp[sr1*(this->alignN)+sl2] += Kf*dCfdC2;
+    ddNdtByVdcTp[sr2*(this->alignN)+sl2] += Kf*dCfdC2;
 
-    if(i>=this->n_Arrhenius + this->n_NonEquilibriumReversibleArrhenius && 
-        i <this->nReactions-this->n_PlogReaction)
-    {
-      double* const* __restrict__ ArrRes = this->ArrPtr.data();
-        const unsigned int k = i - this->n_Arrhenius - this->n_NonEquilibriumReversibleArrhenius;
-        unsigned int remain = this->nSpecies%4;
+    if(i>=this->Ikf[2] && i <this->Ikf[6])
+    { 
+        const unsigned int k = i - this->Ikf[2];
 
         __m256d dKfdC = _mm256_set1_pd(this->dKfdC_[k]);
         __m256d CF_ = _mm256_set1_pd(CF);            
@@ -2654,315 +1074,36 @@ void inline OptReaction::JF33
         dKrdC = (this->dKfdC_[k]*invKc);
         __m256d dKrdC_ = _mm256_set1_pd(dKrdC);
 
-        for(unsigned int j = 0; j < this->nSpecies-remain;j=j+4)
+        for(unsigned int j = 0; j < this->AlignSpecies;j=j+4)
         {
-            unsigned int j0 = j+0;
-            unsigned int j1 = j+1;
-            unsigned int j2 = j+2;
-            unsigned int j3 = j+3;
 
-            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*nSpecies+j0]);
+            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*this->AlignSpecies+j]);
             __m256d WdMdC = _mm256_mul_pd(dKrdC_,CR_);
             WdMdC = _mm256_fmsub_pd(_mm256_mul_pd(dKfdC,dMdC),CF_,WdMdC);
-            _mm256_storeu_pd(&ArrRes[0][0],WdMdC);
 
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sl2*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += ArrRes[0][0];
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += ArrRes[0][0];
-            ddNdtByVdcTp[sr2*(this->n_)+j0] += ArrRes[0][0];
-            
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sl2*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += ArrRes[0][1];
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += ArrRes[0][1];
-            ddNdtByVdcTp[sr2*(this->n_)+j1] += ArrRes[0][1];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sl1*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sl2*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += ArrRes[0][2];
-            ddNdtByVdcTp[sr1*(this->n_)+j2] += ArrRes[0][2];
-            ddNdtByVdcTp[sr2*(this->n_)+j2] += ArrRes[0][2];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sl1*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sl2*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sr0*(this->n_)+j3] += ArrRes[0][3];
-            ddNdtByVdcTp[sr1*(this->n_)+j3] += ArrRes[0][3];
-            ddNdtByVdcTp[sr2*(this->n_)+j3] += ArrRes[0][3];
+            __m256d sl0v = _mm256_loadu_pd(&ddNdtByVdcTp[sl0*(this->alignN)+j]);
+            __m256d sl1v = _mm256_loadu_pd(&ddNdtByVdcTp[sl1*(this->alignN)+j]);
+            __m256d sl2v = _mm256_loadu_pd(&ddNdtByVdcTp[sl2*(this->alignN)+j]);
+            __m256d sr0v = _mm256_loadu_pd(&ddNdtByVdcTp[sr0*(this->alignN)+j]);
+            __m256d sr1v = _mm256_loadu_pd(&ddNdtByVdcTp[sr1*(this->alignN)+j]);
+            __m256d sr2v = _mm256_loadu_pd(&ddNdtByVdcTp[sr2*(this->alignN)+j]);
+            sl0v = _mm256_sub_pd(sl0v,WdMdC);
+            sl1v = _mm256_sub_pd(sl1v,WdMdC);
+            sl2v = _mm256_sub_pd(sl2v,WdMdC);
+            sr0v = _mm256_add_pd(sr0v,WdMdC);
+            sr1v = _mm256_add_pd(sr1v,WdMdC);
+            sr2v = _mm256_add_pd(sr2v,WdMdC);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sl0*(this->alignN)+j],sl0v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sl1*(this->alignN)+j],sl1v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sl2*(this->alignN)+j],sl2v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sr0*(this->alignN)+j],sr0v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sr1*(this->alignN)+j],sr1v);
+            _mm256_storeu_pd(&ddNdtByVdcTp[sr2*(this->alignN)+j],sr2v);
         } 
-        if(remain==1)
-        {
-            unsigned int j = this->nSpecies-1;
-            const double WdMdC = this->dKfdC_[k]*this->dMdC(k,j)*CF - dKrdC*this->dMdC(k,j)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sl1*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sl2*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sr0*(this->n_)+j] += WdMdC;
-            ddNdtByVdcTp[sr1*(this->n_)+j] += WdMdC;
-            ddNdtByVdcTp[sr2*(this->n_)+j] += WdMdC;        
-        }
-        else if(remain==2)
-        {
-            unsigned int j0 = this->nSpecies-2;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl2*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr2*(this->n_)+j0] += WdMdC0;  
-
-            unsigned int j1 = this->nSpecies-1;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl2*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr2*(this->n_)+j1] += WdMdC1;      
-        }
-        else if(remain ==3)
-        {
-            unsigned int j0 = this->nSpecies-3;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl2*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr2*(this->n_)+j0] += WdMdC0;  
-
-            unsigned int j1 = this->nSpecies-2;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl2*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr2*(this->n_)+j1] += WdMdC1;      
-
-            unsigned int j2 = this->nSpecies-1;
-            double WdMdC2 = this->dKfdC_[k]*this->dMdC(k,j2)*CF - dKrdC*this->dMdC(k,j2)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= WdMdC2;
-            ddNdtByVdcTp[sl1*(this->n_)+j2] -= WdMdC2;
-            ddNdtByVdcTp[sl2*(this->n_)+j2] -= WdMdC2;
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += WdMdC2;
-            ddNdtByVdcTp[sr1*(this->n_)+j2] += WdMdC2;
-            ddNdtByVdcTp[sr2*(this->n_)+j2] += WdMdC2;  
-        }      
     }  
-}            
+}
 
-void inline OptReaction::JF33
-(
-    unsigned int i,
-    double Kf,
-    double dKfdT,
-    const double* __restrict__ C,
-    double* __restrict__ dNdtByV,
-    double* __restrict__ ddNdtByVdcTp
-)const noexcept
-{
-
-    const unsigned int sl0 = lhsSpeciesIndex[lhsOffset[i]+0];
-    const unsigned int sl1 = lhsSpeciesIndex[lhsOffset[i]+1];
-    const unsigned int sl2 = lhsSpeciesIndex[lhsOffset[i]+2];
-    const unsigned int sr0 = rhsSpeciesIndex[rhsOffset[i]+0];
-    const unsigned int sr1 = rhsSpeciesIndex[rhsOffset[i]+1];
-    const unsigned int sr2 = rhsSpeciesIndex[rhsOffset[i]+2];
-
-    double Kr = 0;
-    double dKrdT = 0;
-
-    Kr = this->Kf_[i - Ikf[1] + Ikf[9]];
-    dKrdT = this->dKfdT_[i - Ikf[1] + Ikf[9]];
-
-    const double dCrdC0 = C[sr1]*C[sr2];
-    const double dCrdC1 = C[sr0]*C[sr2];
-    const double dCrdC2 = C[sr0]*C[sr1];  
-
-    ddNdtByVdcTp[sl0*(this->n_)+sr0] -= (-Kr*dCrdC0);
-    ddNdtByVdcTp[sl1*(this->n_)+sr0] -= (-Kr*dCrdC0);
-    ddNdtByVdcTp[sl2*(this->n_)+sr0] -= (-Kr*dCrdC0);    
-    ddNdtByVdcTp[sr0*(this->n_)+sr0] += (-Kr*dCrdC0);
-    ddNdtByVdcTp[sr1*(this->n_)+sr0] += (-Kr*dCrdC0);
-    ddNdtByVdcTp[sr2*(this->n_)+sr0] += (-Kr*dCrdC0);
-    ddNdtByVdcTp[sl0*(this->n_)+sr1] -= (-Kr*dCrdC1);
-    ddNdtByVdcTp[sl1*(this->n_)+sr1] -= (-Kr*dCrdC1);
-    ddNdtByVdcTp[sl2*(this->n_)+sr1] -= (-Kr*dCrdC1);
-    ddNdtByVdcTp[sr0*(this->n_)+sr1] += (-Kr*dCrdC1);
-    ddNdtByVdcTp[sr1*(this->n_)+sr1] += (-Kr*dCrdC1);
-    ddNdtByVdcTp[sr2*(this->n_)+sr1] += (-Kr*dCrdC1);
-    ddNdtByVdcTp[sl0*(this->n_)+sr2] -= (-Kr*dCrdC2);
-    ddNdtByVdcTp[sl1*(this->n_)+sr2] -= (-Kr*dCrdC2);
-    ddNdtByVdcTp[sl2*(this->n_)+sr2] -= (-Kr*dCrdC2);
-    ddNdtByVdcTp[sr0*(this->n_)+sr2] += (-Kr*dCrdC2);
-    ddNdtByVdcTp[sr1*(this->n_)+sr2] += (-Kr*dCrdC2);
-    ddNdtByVdcTp[sr2*(this->n_)+sr2] += (-Kr*dCrdC2); 
-
-    const double CF = C[sl0]*C[sl1]*C[sl2];
-    const double CR = C[sr0]*C[sr1]*C[sr2];
-
-    const double q = (Kf*CF) - (Kr*CR);
-    dNdtByV[sl0] = dNdtByV[sl0] - q; 
-    dNdtByV[sl1] = dNdtByV[sl1] - q;
-    dNdtByV[sl2] = dNdtByV[sl2] - q;
-    dNdtByV[sr0] = dNdtByV[sr0] + q;
-    dNdtByV[sr1] = dNdtByV[sr1] + q;
-    dNdtByV[sr2] = dNdtByV[sr2] + q;
-
-    const double dqdT = (dKfdT*CF)-(dKrdT*CR);
-    ddNdtByVdcTp[sl0*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sl1*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sl2*(this->n_)+this->nSpecies] -= dqdT;
-    ddNdtByVdcTp[sr0*(this->n_)+this->nSpecies] += dqdT;
-    ddNdtByVdcTp[sr1*(this->n_)+this->nSpecies] += dqdT;
-    ddNdtByVdcTp[sr2*(this->n_)+this->nSpecies] += dqdT;
-
-    const double dCfdC0 = C[sl1]*C[sl2];
-    const double dCfdC1 = C[sl0]*C[sl2];
-    const double dCfdC2 = C[sl0]*C[sl1];
-    ddNdtByVdcTp[sl0*(this->n_)+sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sl1*(this->n_)+sl0] -= Kf*dCfdC0;
-    ddNdtByVdcTp[sl2*(this->n_)+sl0] -= Kf*dCfdC0;    
-    ddNdtByVdcTp[sr0*(this->n_)+sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sr1*(this->n_)+sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sr2*(this->n_)+sl0] += Kf*dCfdC0;
-    ddNdtByVdcTp[sl0*(this->n_)+sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sl1*(this->n_)+sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sl2*(this->n_)+sl1] -= Kf*dCfdC1;
-    ddNdtByVdcTp[sr0*(this->n_)+sl1] += Kf*dCfdC1;
-    ddNdtByVdcTp[sr1*(this->n_)+sl1] += Kf*dCfdC1;
-    ddNdtByVdcTp[sr2*(this->n_)+sl1] += Kf*dCfdC1;
-    ddNdtByVdcTp[sl0*(this->n_)+sl2] -= Kf*dCfdC2;
-    ddNdtByVdcTp[sl1*(this->n_)+sl2] -= Kf*dCfdC2;
-    ddNdtByVdcTp[sl2*(this->n_)+sl2] -= Kf*dCfdC2;
-    ddNdtByVdcTp[sr0*(this->n_)+sl2] += Kf*dCfdC2;
-    ddNdtByVdcTp[sr1*(this->n_)+sl2] += Kf*dCfdC2;
-    ddNdtByVdcTp[sr2*(this->n_)+sl2] += Kf*dCfdC2;
-
-    if(i>=this->n_Arrhenius + this->n_NonEquilibriumReversibleArrhenius && 
-        i <this->nReactions-this->n_PlogReaction)
-    {
-      double* const* __restrict__ ArrRes = this->ArrPtr.data();
-        const unsigned int k = i - this->n_Arrhenius - this->n_NonEquilibriumReversibleArrhenius;
-        unsigned int remain = this->nSpecies%4;
-
-        __m256d dKfdC = _mm256_set1_pd(this->dKfdC_[k]);
-        __m256d CF_ = _mm256_set1_pd(CF);            
-        __m256d CR_ = _mm256_set1_pd(CR);  
-        double dKrdC = 0;
-        dKrdC = (this->dKfdC_[Itbr[4]+k]);
-        __m256d dKrdC_ = _mm256_set1_pd(dKrdC);
-
-        for(unsigned int j = 0; j < this->nSpecies-remain;j=j+4)
-        {
-            unsigned int j0 = j+0;
-            unsigned int j1 = j+1;
-            unsigned int j2 = j+2;
-            unsigned int j3 = j+3;
-
-            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*nSpecies+j0]);
-            __m256d WdMdC = _mm256_mul_pd(dKrdC_,CR_);
-            WdMdC = _mm256_fmsub_pd(_mm256_mul_pd(dKfdC,dMdC),CF_,WdMdC);
-            _mm256_storeu_pd(&ArrRes[0][0],WdMdC);
-
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sl2*(this->n_)+j0] -= ArrRes[0][0];
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += ArrRes[0][0];
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += ArrRes[0][0];
-            ddNdtByVdcTp[sr2*(this->n_)+j0] += ArrRes[0][0];
-            
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sl2*(this->n_)+j1] -= ArrRes[0][1];
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += ArrRes[0][1];
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += ArrRes[0][1];
-            ddNdtByVdcTp[sr2*(this->n_)+j1] += ArrRes[0][1];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sl1*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sl2*(this->n_)+j2] -= ArrRes[0][2];
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += ArrRes[0][2];
-            ddNdtByVdcTp[sr1*(this->n_)+j2] += ArrRes[0][2];
-            ddNdtByVdcTp[sr2*(this->n_)+j2] += ArrRes[0][2];
-
-            ddNdtByVdcTp[sl0*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sl1*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sl2*(this->n_)+j3] -= ArrRes[0][3];
-            ddNdtByVdcTp[sr0*(this->n_)+j3] += ArrRes[0][3];
-            ddNdtByVdcTp[sr1*(this->n_)+j3] += ArrRes[0][3];
-            ddNdtByVdcTp[sr2*(this->n_)+j3] += ArrRes[0][3];
-        } 
-        if(remain==1)
-        {
-            unsigned int j = this->nSpecies-1;
-            const double WdMdC = this->dKfdC_[k]*this->dMdC(k,j)*CF - dKrdC*this->dMdC(k,j)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sl1*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sl2*(this->n_)+j] -= WdMdC;
-            ddNdtByVdcTp[sr0*(this->n_)+j] += WdMdC;
-            ddNdtByVdcTp[sr1*(this->n_)+j] += WdMdC;
-            ddNdtByVdcTp[sr2*(this->n_)+j] += WdMdC;        
-        }
-        else if(remain==2)
-        {
-            unsigned int j0 = this->nSpecies-2;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl2*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr2*(this->n_)+j0] += WdMdC0;  
-
-            unsigned int j1 = this->nSpecies-1;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl2*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr2*(this->n_)+j1] += WdMdC1;      
-        }
-        else if(remain ==3)
-        {
-            unsigned int j0 = this->nSpecies-3;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl1*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sl2*(this->n_)+j0] -= WdMdC0;
-            ddNdtByVdcTp[sr0*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr1*(this->n_)+j0] += WdMdC0;
-            ddNdtByVdcTp[sr2*(this->n_)+j0] += WdMdC0;  
-
-            unsigned int j1 = this->nSpecies-2;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl1*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sl2*(this->n_)+j1] -= WdMdC1;
-            ddNdtByVdcTp[sr0*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr1*(this->n_)+j1] += WdMdC1;
-            ddNdtByVdcTp[sr2*(this->n_)+j1] += WdMdC1;      
-
-            unsigned int j2 = this->nSpecies-1;
-            double WdMdC2 = this->dKfdC_[k]*this->dMdC(k,j2)*CF - dKrdC*this->dMdC(k,j2)*CR;
-            ddNdtByVdcTp[sl0*(this->n_)+j2] -= WdMdC2;
-            ddNdtByVdcTp[sl1*(this->n_)+j2] -= WdMdC2;
-            ddNdtByVdcTp[sl2*(this->n_)+j2] -= WdMdC2;
-            ddNdtByVdcTp[sr0*(this->n_)+j2] += WdMdC2;
-            ddNdtByVdcTp[sr1*(this->n_)+j2] += WdMdC2;
-            ddNdtByVdcTp[sr2*(this->n_)+j2] += WdMdC2;  
-        }      
-    }  
-}            
-
-void inline OptReaction::JFG
+void inline OptReaction::JFGI
 (
     unsigned int i,
     double Kf,
@@ -2979,69 +1120,80 @@ void inline OptReaction::JFG
     double dKrdT = 0;
     double CF = 1.0;
     double CR = 1.0;
-    double invKc = 1;
+    double invKc = 0;
     if(this->isIrreversible[i]==0)
     {
         int sumVki = 0;
         double Kp = 1.0;
         double sumVdBdT = 0.0;
-        for(unsigned int j = 0; j < this->lhsIndex[i].size();j++)
+        for(unsigned int j = 0; j < this->lhsSpeciesIndex[i].size();j++)
         {
-            const unsigned int si = this->lhsIndex[i][j];
+            const unsigned int si = this->lhsSpeciesIndex[i][j];
             Kp = Kp / this->tmp_Exp[si];
             sumVki = sumVki - 1;
             sumVdBdT = sumVdBdT - dBdT[si];
+            CF = CF * C[si];
         }
-    
-        for(unsigned int j = 0; j < this->rhsIndex[i].size();j++)
+
+        for(unsigned int j = 0; j < this->rhsSpeciesIndex[i].size();j++)
         {
-            const unsigned int si = this->rhsIndex[i][j];
+            const unsigned int si = this->rhsSpeciesIndex[i][j];
             Kp = Kp * this->tmp_Exp[si];
             sumVki = sumVki + 1;
             sumVdBdT = sumVdBdT + dBdT[si];
             CR = CR * C[si];
         }
         this->update_Pow_pByRT_SumVki(T);
-        const double Kc = std::max(Kp*this->Pow_pByRT_SumVki_[sumVki],1.4901171103413047e-8);
+        const double Kc = std::max(Kp*this->Pow_pByRT_SumVki_I[sumVki],1.4901171103413047e-8);
         invKc = 1.0/Kc;            
 
         const double dKcdTByKc = sumVdBdT - sumVki*invT;
         Kr = Kf*invKc;
         dKrdT = dKfdT*invKc - (Kc > 1.4901171103413047e-8 ? Kr*dKcdTByKc : 0);
     }
-
-    for(unsigned int j = 0; j < lhsIndex[i].size();j++)
+    else if(this->isIrreversible[i]==2)
     {
-        const unsigned int index = lhsIndex[i][j];
-        CF = CF * C[index];
+        Kr = this->Kf_[i - Ikf[1] + Ikf[9]];
+        dKrdT = this->dKfdT_[i - Ikf[1] + Ikf[9]];
+        invKc = Kr/Kf;        
+        for(unsigned int j = 0; j < this->rhsSpeciesIndex[i].size();j++)
+        {
+            const unsigned int si = this->rhsSpeciesIndex[i][j];
+            CR = CR * C[si];
+        }
+        for(unsigned int j = 0; j < this->lhsSpeciesIndex[i].size();j++)
+        {
+            const unsigned int sl = this->lhsSpeciesIndex[i][j];
+            CF = CF * C[sl];
+        }
     }
 
     const double q = Kf*CF - Kr*CR;
     const double dqdT = (dKfdT*CF-dKrdT*CR);
 
-    for(unsigned int j = 0; j < this->lhsIndex[i].size();j++)
+    for(unsigned int j = 0; j < this->lhsSpeciesIndex[i].size();j++)
     {
-        const unsigned int si = this->lhsIndex[i][j];
-        ddNdtByVdcTp[si*(n_)+this->nSpecies] -= dqdT;
+        const unsigned int si = this->lhsSpeciesIndex[i][j];
+        ddNdtByVdcTp[si*(this->alignN) + (this->nSpecies)] -= dqdT;
         dNdtByV[si] = dNdtByV[si] - q;                        
     }
 
-    for(unsigned int j = 0; j < this->rhsIndex[i].size();j++)
+    for(unsigned int j = 0; j < this->rhsSpeciesIndex[i].size();j++)
     {
-        const unsigned int si = this->rhsIndex[i][j];
-        ddNdtByVdcTp[si*(n_)+this->nSpecies] += dqdT;
+        const unsigned int si = this->rhsSpeciesIndex[i][j];
+        ddNdtByVdcTp[si*(this->alignN) + (this->nSpecies)] += dqdT;
         dNdtByV[si] = dNdtByV[si] + q;                        
     }            
                 
 
-    for(unsigned int j = 0; j < lhsIndex[i].size();j++)
+    for(unsigned int j = 0; j < this->lhsSpeciesIndex[i].size();j++)
     {
-        const unsigned int sj = lhsIndex[i][j];
+        const unsigned int sj = this->lhsSpeciesIndex[i][j];
 
         double dCfdCj = 1.0;
-        for(unsigned int k = 0; k < lhsIndex[i].size();k++)
+        for(unsigned int k = 0; k < this->lhsSpeciesIndex[i].size();k++)
         {
-            const unsigned int sk = lhsIndex[i][k];
+            const unsigned int sk = this->lhsSpeciesIndex[i][k];
 
             dCfdCj = dCfdCj*
             (
@@ -3051,31 +1203,28 @@ void inline OptReaction::JFG
 
         const double KfdCfdCj = Kf*dCfdCj;
 
-        for(unsigned int k = 0; k < lhsIndex[i].size();k++)
+        for(unsigned int k = 0; k < this->lhsSpeciesIndex[i].size();k++)
         {
-            const unsigned int sl = lhsstoichCoeff[i][k];
-            const unsigned int sk = lhsIndex[i][k];
-            ddNdtByVdcTp[sk*(n_)+sj] -= sl*KfdCfdCj;
+            const unsigned int sk = this->lhsSpeciesIndex[i][k];
+            ddNdtByVdcTp[sk*(this->alignN)+sj] -= KfdCfdCj;
         }
 
-        for(unsigned int k = 0; k < rhsIndex[i].size();k++)
+        for(unsigned int k = 0; k < rhsSpeciesIndex[i].size();k++)
         {
-            const unsigned int sr = rhsstoichCoeff[i][k];
-            const unsigned int sk = rhsIndex[i][k];
-            ddNdtByVdcTp[sk*(n_)+sj] += sr*KfdCfdCj;
+            const unsigned int sk = rhsSpeciesIndex[i][k];
+            ddNdtByVdcTp[sk*(this->alignN)+sj] += KfdCfdCj;
         }
-
-    }  
-    if(this->isIrreversible[i]==0)
+    }
+    if(this->isIrreversible[i]==0||this->isIrreversible[i]==2)
     {
-        for(unsigned int j = 0; j < rhsIndex[i].size();j++)
+        for(unsigned int j = 0; j < rhsSpeciesIndex[i].size();j++)
         {
-            const unsigned int sj = rhsIndex[i][j];                        
+            const unsigned int sj = rhsSpeciesIndex[i][j];
     
             double dCrdCj = 1.0;
-            for(unsigned int k = 0; k < rhsIndex[i].size();k++)
+            for(unsigned int k = 0; k < rhsSpeciesIndex[i].size();k++)
             {
-                const unsigned int sk = rhsIndex[i][k];
+                const unsigned int sk = rhsSpeciesIndex[i][k];
     
                 dCrdCj = dCrdCj*
                 (
@@ -3085,30 +1234,23 @@ void inline OptReaction::JFG
     
             const double negKrdCrdCj = -Kr*dCrdCj;
 
-            for(unsigned int k = 0; k < lhsIndex[i].size();k++)
+            for(unsigned int k = 0; k < this->lhsSpeciesIndex[i].size();k++)
             {
-                const unsigned int sl = lhsstoichCoeff[i][k];
-                const unsigned int sk = lhsIndex[i][k];
-                ddNdtByVdcTp[sk*(n_)+sj] -= sl*negKrdCrdCj;
+                const unsigned int sk = this->lhsSpeciesIndex[i][k];
+                ddNdtByVdcTp[sk*(this->alignN)+sj] -= negKrdCrdCj;
             }
 
-            for(unsigned int k = 0; k < rhsIndex[i].size();k++)
+            for(unsigned int k = 0; k < rhsSpeciesIndex[i].size();k++)
             {
-                const unsigned int sr = rhsstoichCoeff[i][k];
-                const unsigned int sk = rhsIndex[i][k];
-                ddNdtByVdcTp[sk*(n_)+sj] += sr*negKrdCrdCj;                        
+                const unsigned int sk = rhsSpeciesIndex[i][k];
+                ddNdtByVdcTp[sk*(this->alignN)+sj] += negKrdCrdCj;                        
             }
         }          
     }
 
-
-
-
-    if(i>=this->n_Arrhenius + this->n_NonEquilibriumReversibleArrhenius && i <this->nReactions-this->n_PlogReaction)
+    if(i>=this->Ikf[2] && i <this->Ikf[6])
     {
-        double* const* __restrict__ ArrRes = this->ArrPtr.data();
-        const unsigned int kk = i - this->n_Arrhenius - this->n_NonEquilibriumReversibleArrhenius;
-        unsigned int remain = this->nSpecies%4;
+        const unsigned int kk = i - this->Ikf[2];
 
         __m256d dKfdC = _mm256_set1_pd(this->dKfdC_[kk]);
         __m256d CF_ = _mm256_set1_pd(CF);            
@@ -3117,303 +1259,269 @@ void inline OptReaction::JFG
         dKrdC = (this->dKfdC_[kk]*invKc);
         __m256d dKrdC_ = _mm256_set1_pd(dKrdC);
 
-        for(unsigned int j = 0; j < this->nSpecies-remain;j=j+4)
+        for(unsigned int j = 0; j < this->AlignSpecies;j=j+4)
         {
-            unsigned int j0 = j+0;
-            unsigned int j1 = j+1;
-            unsigned int j2 = j+2;
-            unsigned int j3 = j+3;
-
-            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[kk*nSpecies+j0]);
-
+            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[kk*this->AlignSpecies+j]);
             __m256d WdMdC = _mm256_mul_pd(_mm256_mul_pd(dKrdC_,dMdC),CR_);
             WdMdC = _mm256_fmsub_pd(_mm256_mul_pd(dKfdC,dMdC),CF_,WdMdC);
-            _mm256_storeu_pd(&ArrRes[0][0],WdMdC);
 
-            for(unsigned int k = 0; k < lhsIndex[i].size();k++)
+            for(unsigned int k = 0; k < this->lhsSpeciesIndex[i].size();k++)
             {
-                const unsigned int sl = lhsstoichCoeff[i][k];
-                const unsigned int sk = lhsIndex[i][k];
-                ddNdtByVdcTp[sk*(n_)+j0] -= sl*ArrRes[0][0];
-                ddNdtByVdcTp[sk*(n_)+j1] -= sl*ArrRes[0][1];
-                ddNdtByVdcTp[sk*(n_)+j2] -= sl*ArrRes[0][2];
-                ddNdtByVdcTp[sk*(n_)+j3] -= sl*ArrRes[0][3];
+                const unsigned int sk = this->lhsSpeciesIndex[i][k];
+                __m256d skv = _mm256_loadu_pd(&ddNdtByVdcTp[sk*(this->alignN)+j]);
+                skv = _mm256_sub_pd(skv,WdMdC);
+                _mm256_storeu_pd(&ddNdtByVdcTp[sk*(this->alignN)+j],skv);
             }
 
-            for(unsigned int k = 0; k < rhsIndex[i].size();k++)
+            for(unsigned int k = 0; k < rhsSpeciesIndex[i].size();k++)
             {
-                const unsigned int sr = rhsstoichCoeff[i][k];
-                const unsigned int sk = rhsIndex[i][k];
-                ddNdtByVdcTp[sk*(n_)+j0] += sr*ArrRes[0][0];
-                ddNdtByVdcTp[sk*(n_)+j1] += sr*ArrRes[0][1];    
-                ddNdtByVdcTp[sk*(n_)+j2] += sr*ArrRes[0][2];
-                ddNdtByVdcTp[sk*(n_)+j3] += sr*ArrRes[0][3];                                       
+
+                const unsigned int sk = rhsSpeciesIndex[i][k];
+                __m256d skv = _mm256_loadu_pd(&ddNdtByVdcTp[sk*(this->alignN)+j]);
+                skv = _mm256_add_pd(skv,WdMdC);
+                _mm256_storeu_pd(&ddNdtByVdcTp[sk*(this->alignN)+j],skv);                                     
             }
         } 
-        if(remain==1)
-        {
-            unsigned int j = this->nSpecies-1;
-            const double WdMdC = this->dKfdC_[kk]*this->dMdC(kk,j)*CF - dKrdC*this->dMdC(kk,j)*CR;
-            for(unsigned int k = 0; k < lhsIndex[i].size();k++)
-            {
-                const unsigned int sl = lhsstoichCoeff[i][k];
-                const unsigned int sk = lhsIndex[i][k];
-                ddNdtByVdcTp[sk*(n_)+j] -= sl*WdMdC;
-            }
-    
-            for(unsigned int k = 0; k < rhsIndex[i].size();k++)
-            {
-                const unsigned int sr = rhsstoichCoeff[i][k];
-                const unsigned int sk = rhsIndex[i][k];
-                ddNdtByVdcTp[sk*(n_)+j] += sr*WdMdC;                                     
-            }                
-        }
-        else if(remain==2)
-        {
-            unsigned int j0 = this->nSpecies-2;
-            unsigned int j1 = this->nSpecies-1;
-
-            double WdMdC0 = this->dKfdC_[kk]*this->dMdC(kk,j0)*CF - dKrdC*this->dMdC(kk,j0)*CR;
-            double WdMdC1 = this->dKfdC_[kk]*this->dMdC(kk,j1)*CF - dKrdC*this->dMdC(kk,j1)*CR;
-
-            for(unsigned int k = 0; k < lhsIndex[i].size();k++)
-            {
-                const unsigned int sl = lhsstoichCoeff[i][k];
-                const unsigned int sk = lhsIndex[i][k];
-                ddNdtByVdcTp[sk*(n_)+j0] -= sl*WdMdC0;
-                ddNdtByVdcTp[sk*(n_)+j1] -= sl*WdMdC1;                
-            }
-    
-            for(unsigned int k = 0; k < rhsIndex[i].size();k++)
-            {
-                const unsigned int sr = rhsstoichCoeff[i][k];
-                const unsigned int sk = rhsIndex[i][k];
-                ddNdtByVdcTp[sk*(n_)+j0] += sr*WdMdC0;  
-                ddNdtByVdcTp[sk*(n_)+j1] += sr*WdMdC1;                                   
-            }         
-        }
-        else if(remain ==3)
-        {
-            unsigned int j0 = this->nSpecies-3;
-            unsigned int j1 = this->nSpecies-2;
-            unsigned int j2 = this->nSpecies-1;
-            double WdMdC0 = this->dKfdC_[kk]*this->dMdC(kk,j0)*CF - dKrdC*this->dMdC(kk,j0)*CR;
-            double WdMdC1 = this->dKfdC_[kk]*this->dMdC(kk,j1)*CF - dKrdC*this->dMdC(kk,j1)*CR;
-            double WdMdC2 = this->dKfdC_[kk]*this->dMdC(kk,j2)*CF - dKrdC*this->dMdC(kk,j2)*CR;
-
-            for(unsigned int l = 0; l < lhsIndex[i].size();l++)
-            {
-                const unsigned int sl = lhsstoichCoeff[i][l];
-                const unsigned int sk = lhsIndex[i][l];
-                ddNdtByVdcTp[sk*(n_)+j0] -= sl*WdMdC0;
-                ddNdtByVdcTp[sk*(n_)+j1] -= sl*WdMdC1; 
-                ddNdtByVdcTp[sk*(n_)+j2] -= sl*WdMdC2;               
-            }
-
-            for(unsigned int l = 0; l < rhsIndex[i].size();l++)
-            {
-                const unsigned int sr = rhsstoichCoeff[i][l];
-                const unsigned int sk = rhsIndex[i][l];
-                ddNdtByVdcTp[sk*(n_)+j0] += sr*WdMdC0;  
-                ddNdtByVdcTp[sk*(n_)+j1] += sr*WdMdC1; 
-                ddNdtByVdcTp[sk*(n_)+j2] += sr*WdMdC2;                                  
-            }                     
-        }
     }   
 }
 
-
-void inline OptReaction::JFG
+void inline OptReaction::JFGNI
 (
-    unsigned int i,
+    unsigned int iii,
     double Kf,
     double dKfdT,
     const double* __restrict__ C,
     double* __restrict__ dNdtByV,
-    double* __restrict__ ddNdtByVdcTp
+    double* __restrict__ ddNdtByVdcTp,
+    const double* __restrict__ ExpNegGbyRT,
+    const double* __restrict__ dBdT
 )const noexcept
 {
-    double* const* __restrict__ ArrRes = this->ArrPtr.data();
+
     double Kr = 0;
     double dKrdT = 0;
     double CF = 1.0;
     double CR = 1.0;
-
- 
-    Kr = this->Kf_[i - Ikf[1] + Ikf[9]];
-    dKrdT = this->dKfdT_[i - Ikf[1] + Ikf[9]];
-
-    for(unsigned int j = 0; j < lhsIndex[i].size();j++)
+    double invKc = 0;
+    if(this->isIrreversible[iii]==0)
     {
-        const unsigned int index = lhsIndex[i][j];
-        CF = CF * C[index];
+        double sumVki = 0;
+        double Kp = 1.0;
+        double sumVdBdT = 0.0;
+        for(unsigned int j = 0; j < this->lhsSpeciesIndex[iii].size();j++)
+        {
+            const unsigned int si = this->lhsSpeciesIndex[iii][j];
+            const double sl = this->lhsStoichCoeff[iii][j];
+            const double el = this->lhsReactionOrder[iii][j];
+            Kp += sl*this->negGstdByRT[si];
+            sumVdBdT = sumVdBdT - sl*dBdT[si];
+            sumVki = sumVki - sl;
+            CF = CF * (C[si] >= small || el >= 1 ? std::pow(std::max(C[si], 0.0), el) : 0.0);
+        }
+
+        for(unsigned int j = 0; j < this->rhsSpeciesIndex[iii].size();j++)
+        {
+            const unsigned int si = this->rhsSpeciesIndex[iii][j];
+            const double sr = this->rhsStoichCoeff[iii][j];
+            const double er = this->rhsReactionOrder[iii][j];            
+            Kp -= sr*this->negGstdByRT[si];
+            sumVdBdT = sumVdBdT + sr*dBdT[si];
+            sumVki = sumVki + sr;
+            CR = CR * (C[si] >= small || er >= 1.0 ? std::pow(std::max(C[si], 0.0), er) : 0.0);    
+        }
+        Kp = std::exp(Kp);        
+        double Kc = Kp*std::pow(this->Pstd/(this->Ru*this->T),sumVki);
+        Kc = std::max(Kc,1.4901171103413047e-8);
+        invKc = 1.0/Kc;
+
+        const double dKcdTByKc = sumVdBdT - sumVki*invT;
+
+        Kr = Kf*invKc;
+        dKrdT = dKfdT*invKc - (Kc > 1.4901171103413047e-8 ? Kr*dKcdTByKc : 0.0);
+    }
+    else if(this->isIrreversible[iii]==2)
+    {
+        Kr = this->Kf_[iii - Ikf[1] + Ikf[9]];
+        dKrdT = this->dKfdT_[iii - Ikf[1] + Ikf[9]];
+        invKc = Kr/Kf;        
+        for(unsigned int j = 0; j < this->rhsSpeciesIndex[iii].size();j++)
+        {
+            const unsigned int si = this->rhsSpeciesIndex[iii][j];
+            const double er = lhsReactionOrder[iii][j];
+            CR = CR * (C[si] >= small || er >= 1 ? std::pow(std::max(C[si], 0.0), er) : 0.0);   
+        }
+        for(unsigned int j = 0; j < lhsSpeciesIndex[iii].size();j++)
+        {
+            const unsigned int si = lhsSpeciesIndex[iii][j];
+            const double el = lhsReactionOrder[iii][j];
+            CF = CF * (C[si] >= small || el >= 1 ? std::pow(std::max(C[si], 0.0), el) : 0.0);            
+        }
+    }
+    else
+    {
+        for(unsigned int j = 0; j < this->rhsSpeciesIndex[iii].size();j++)
+        {
+            const unsigned int si = this->rhsSpeciesIndex[iii][j];
+            const double er = lhsReactionOrder[iii][j];
+            CR = CR * (C[si] >= small || er >= 1 ? std::pow(std::max(C[si], 0.0), er) : 0.0);   
+        }
+        for(unsigned int j = 0; j < lhsSpeciesIndex[iii].size();j++)
+        {
+            const unsigned int si = lhsSpeciesIndex[iii][j];
+            const double el = lhsReactionOrder[iii][j];
+            CF = CF * (C[si] >= small || el >= 1 ? std::pow(std::max(C[si], 0.0), el) : 0.0);            
+        }        
     }
 
     const double q = Kf*CF - Kr*CR;
-    const double dqdT = (dKfdT*CF-dKrdT*CR);
+    const double dwdT = (dKfdT*CF-dKrdT*CR);
 
-    for(unsigned int j = 0; j < this->lhsIndex[i].size();j++)
+    for(unsigned int j = 0; j < this->lhsSpeciesIndex[iii].size();j++)
     {
-        const unsigned int si = this->lhsIndex[i][j];
-        ddNdtByVdcTp[si*(n_)+this->nSpecies] -= dqdT;
-        dNdtByV[si] = dNdtByV[si] - q;                        
+        const unsigned int si = this->lhsSpeciesIndex[iii][j];
+        const double sl = this->lhsStoichCoeff[iii][j];
+        ddNdtByVdcTp[si*(this->alignN) + (this->nSpecies)] -= sl*dwdT;
+        dNdtByV[si] = dNdtByV[si] - sl*q;
     }
 
-    for(unsigned int j = 0; j < this->rhsIndex[i].size();j++)
+    for(unsigned int j = 0; j < this->rhsSpeciesIndex[iii].size();j++)
     {
-        const unsigned int si = this->rhsIndex[i][j];
-        ddNdtByVdcTp[si*(n_)+this->nSpecies] += dqdT;
-        dNdtByV[si] = dNdtByV[si] + q;                        
+        const unsigned int si = this->rhsSpeciesIndex[iii][j];
+        const double sr = this->rhsStoichCoeff[iii][j];
+        ddNdtByVdcTp[si*(this->alignN) + (this->nSpecies)] += sr*dwdT;
+        dNdtByV[si] = dNdtByV[si] + sr*q;
     }            
                 
 
-    for(unsigned int j = 0; j < lhsIndex[i].size();j++)
+    for(unsigned int j = 0; j < lhsSpeciesIndex[iii].size();j++)
     {
-        const unsigned int sj = lhsIndex[i][j];
+        const unsigned int sj = lhsSpeciesIndex[iii][j];
 
         double dCfdCj = 1.0;
-        for(unsigned int k = 0; k < lhsIndex[i].size();k++)
+        for(unsigned int i = 0; i < lhsSpeciesIndex[iii].size();i++)
         {
-            const unsigned int sk = lhsIndex[i][k];
+            const unsigned int si = lhsSpeciesIndex[iii][i];
+            const double el = lhsReactionOrder[iii][i];
 
-            dCfdCj = dCfdCj*
-            (
-                (j==k)? 1:C[sk]
-            );
+            if (i == j)
+            {
+                dCfdCj *=
+                C[si] >= small || el >= 1
+                    ? el*std::pow(std::max(C[si], 0.0), el - 1.0)
+                    : 0;
+            }
+            else
+            {
+                dCfdCj *=
+                    C[si] >= small || el >= 1
+                    ? std::pow(std::max(C[si], 0.0), el)
+                    : 0;
+            }            
         }
 
         const double KfdCfdCj = Kf*dCfdCj;
 
-        for(unsigned int k = 0; k < lhsIndex[i].size();k++)
+        for(unsigned int i = 0; i < lhsSpeciesIndex[iii].size();i++)
         {
-            const unsigned int sl = lhsstoichCoeff[i][k];
-            const unsigned int sk = lhsIndex[i][k];
-            ddNdtByVdcTp[sk*(n_)+sj] -= sl*KfdCfdCj;
+            const unsigned int si = lhsSpeciesIndex[iii][i];
+            const double sl = lhsStoichCoeff[iii][i];
+            ddNdtByVdcTp[si*(this->alignN)+sj] -= sl*KfdCfdCj;
         }
 
-        for(unsigned int k = 0; k < rhsIndex[i].size();k++)
+        for(unsigned int i = 0; i < rhsSpeciesIndex[iii].size();i++)
         {
-            const unsigned int sr = rhsstoichCoeff[i][k];
-            const unsigned int sk = rhsIndex[i][k];
-            ddNdtByVdcTp[sk*(n_)+sj] += sr*KfdCfdCj;
+            const unsigned int si = rhsSpeciesIndex[iii][i];
+            const double sr = rhsStoichCoeff[iii][i];
+            ddNdtByVdcTp[si*(this->alignN)+sj] += sr*KfdCfdCj;
         }
+    }
 
-    }  
-
-    if(i>=this->n_Arrhenius + this->n_NonEquilibriumReversibleArrhenius && i <this->nReactions-this->n_PlogReaction)
+    if(this->isIrreversible[iii]==0||this->isIrreversible[iii]==2)
     {
-        const unsigned int k = i - this->n_Arrhenius - this->n_NonEquilibriumReversibleArrhenius;
-        unsigned int remain = this->nSpecies%4;
+        for(unsigned int j = 0; j < rhsSpeciesIndex[iii].size();j++)
+        {
+            const unsigned int sj = rhsSpeciesIndex[iii][j];
+    
+            double dCrdCj = 1.0;
+            for(unsigned int i = 0; i < rhsSpeciesIndex[iii].size();i++)
+            {
 
-        __m256d dKfdC = _mm256_set1_pd(this->dKfdC_[k]);
+                const unsigned int si = rhsSpeciesIndex[iii][i];
+                const double er = rhsReactionOrder[iii][i];
+                dCrdCj = dCrdCj*((j==i)? 1:C[si]);
+
+                if (i == j)
+                {
+                    dCrdCj *=
+                        C[si] >= small || er >= 1.0
+                      ? er*std::pow(std::max(C[si], 0.0), er - 1.0)
+                      : 0;
+                }
+                else
+                {
+                    dCrdCj *=
+                        C[si] >= small || er >= 1.0
+                      ? std::pow(std::max(C[si], 0.0), er)
+                      : 0;
+                }
+            }
+    
+            const double negKrdCrdCj = -Kr*dCrdCj;
+
+            for(unsigned int i = 0; i < lhsSpeciesIndex[iii].size();i++)
+            {
+                const unsigned int si = lhsSpeciesIndex[iii][i];
+                const double sl = lhsReactionOrder[iii][j];
+                ddNdtByVdcTp[si*(this->alignN)+sj] -= sl*negKrdCrdCj;
+            }
+
+            for(unsigned int i = 0; i < rhsSpeciesIndex[iii].size();i++)
+            {
+                const unsigned int si = rhsSpeciesIndex[iii][i];
+                const double sr = rhsReactionOrder[iii][j];
+                ddNdtByVdcTp[si*(this->alignN)+sj] += sr*negKrdCrdCj;                        
+            }
+        }
+    }
+
+    if(iii>=this->Ikf[2] && iii <this->Ikf[6])
+    {
+        const unsigned int kk = iii - this->Ikf[2];
+
+        __m256d dKfdC = _mm256_set1_pd(this->dKfdC_[kk]);
         __m256d CF_ = _mm256_set1_pd(CF);            
         __m256d CR_ = _mm256_set1_pd(CR);  
         double dKrdC = 0;
-        dKrdC = (this->dKfdC_[Itbr[4]+k]);
+        dKrdC = (this->dKfdC_[kk]*invKc);
         __m256d dKrdC_ = _mm256_set1_pd(dKrdC);
 
-        for(unsigned int j = 0; j < this->nSpecies-remain;j=j+4)
+        for(unsigned int j = 0; j < this->AlignSpecies;j=j+4)
         {
-            unsigned int j0 = j+0;
-            unsigned int j1 = j+1;
-            unsigned int j2 = j+2;
-            unsigned int j3 = j+3;
-
-            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[k*nSpecies+j0]);
-
+            __m256d dMdC = _mm256_loadu_pd(&this->ThirdBodyFactor1D[kk*this->AlignSpecies+j]);
             __m256d WdMdC = _mm256_mul_pd(_mm256_mul_pd(dKrdC_,dMdC),CR_);
             WdMdC = _mm256_fmsub_pd(_mm256_mul_pd(dKfdC,dMdC),CF_,WdMdC);
-            _mm256_storeu_pd(&ArrRes[0][0],WdMdC);
 
-            for(unsigned int l = 0; l < lhsIndex[i].size();l++)
+            for(unsigned int i = 0; i < lhsSpeciesIndex[iii].size();i++)
             {
-                const unsigned int sl = lhsstoichCoeff[i][l];
-                const unsigned int sk = lhsIndex[i][l];
-                ddNdtByVdcTp[sk*(n_)+j0] -= sl*ArrRes[0][0];
-                ddNdtByVdcTp[sk*(n_)+j1] -= sl*ArrRes[0][1];
-                ddNdtByVdcTp[sk*(n_)+j2] -= sl*ArrRes[0][2];
-                ddNdtByVdcTp[sk*(n_)+j3] -= sl*ArrRes[0][3];
+                const unsigned int si = lhsSpeciesIndex[iii][i];
+                const double sl = lhsStoichCoeff[iii][i];
+                __m256d Jac = _mm256_loadu_pd(&ddNdtByVdcTp[si*(this->alignN)+j]);
+                __m256d slv = _mm256_set1_pd(sl);
+
+                Jac = _mm256_sub_pd(Jac,_mm256_mul_pd(WdMdC,slv));
+                _mm256_storeu_pd(&ddNdtByVdcTp[si*(this->alignN)+j],Jac);
             }
 
-            for(unsigned int l = 0; l < rhsIndex[i].size();l++)
+            for(unsigned int i = 0; i < rhsSpeciesIndex[iii].size();i++)
             {
-                const unsigned int sr = rhsstoichCoeff[i][l];
-                const unsigned int sk = rhsIndex[i][l];
-                ddNdtByVdcTp[sk*(n_)+j0] += sr*ArrRes[0][0];
-                ddNdtByVdcTp[sk*(n_)+j1] += sr*ArrRes[0][1];    
-                ddNdtByVdcTp[sk*(n_)+j2] += sr*ArrRes[0][2];
-                ddNdtByVdcTp[sk*(n_)+j3] += sr*ArrRes[0][3];                                       
+                const unsigned int si = rhsSpeciesIndex[iii][i];
+                const double sr = rhsStoichCoeff[iii][i];
+                __m256d Jac = _mm256_loadu_pd(&ddNdtByVdcTp[si*(this->alignN)+j]);
+                __m256d srv = _mm256_set1_pd(sr);
+
+                Jac = _mm256_add_pd(Jac,_mm256_mul_pd(WdMdC,srv));
+                _mm256_storeu_pd(&ddNdtByVdcTp[si*(this->alignN)+j],Jac);                                     
             }
         } 
-        if(remain==1)
-        {
-            unsigned int j = this->nSpecies-1;
-            const double WdMdC = this->dKfdC_[k]*this->dMdC(k,j)*CF - dKrdC*this->dMdC(k,j)*CR;
-
-            for(unsigned int l = 0; l < lhsIndex[i].size();l++)
-            {
-                const unsigned int sl = lhsstoichCoeff[i][l];
-                const unsigned int sk = lhsIndex[i][l];
-                ddNdtByVdcTp[sk*(n_)+j] -= sl*WdMdC;
-            }
-
-            for(unsigned int l = 0; l < rhsIndex[i].size();l++)
-            {
-                const unsigned int sr = rhsstoichCoeff[i][l];
-                const unsigned int sk = rhsIndex[i][l];
-                ddNdtByVdcTp[sk*(n_)+j] += sr*WdMdC;                                     
-            }                
-        }
-        else if(remain==2)
-        {
-            unsigned int j0 = this->nSpecies-2;
-            unsigned int j1 = this->nSpecies-1;
-
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-
-            for(unsigned int l = 0; l < lhsIndex[i].size();l++)
-            {
-                const unsigned int sl = lhsstoichCoeff[i][l];
-                const unsigned int sk = lhsIndex[i][l];
-                ddNdtByVdcTp[sk*(n_)+j0] -= sl*WdMdC0;
-                ddNdtByVdcTp[sk*(n_)+j1] -= sl*WdMdC1;                
-            }
-
-            for(unsigned int l = 0; l < rhsIndex[i].size();l++)
-            {
-                const unsigned int sr = rhsstoichCoeff[i][l];
-                const unsigned int sk = rhsIndex[i][l];
-                ddNdtByVdcTp[sk*(n_)+j0] += sr*WdMdC0;  
-                ddNdtByVdcTp[sk*(n_)+j1] += sr*WdMdC1;                                   
-            }         
-        }
-        else if(remain ==3)
-        {
-            unsigned int j0 = this->nSpecies-3;
-            unsigned int j1 = this->nSpecies-2;
-            unsigned int j2 = this->nSpecies-1;
-            double WdMdC0 = this->dKfdC_[k]*this->dMdC(k,j0)*CF - dKrdC*this->dMdC(k,j0)*CR;
-            double WdMdC1 = this->dKfdC_[k]*this->dMdC(k,j1)*CF - dKrdC*this->dMdC(k,j1)*CR;
-            double WdMdC2 = this->dKfdC_[k]*this->dMdC(k,j2)*CF - dKrdC*this->dMdC(k,j2)*CR;
-
-            for(unsigned int l = 0; l < lhsIndex[i].size();l++)
-            {
-                const unsigned int sl = lhsstoichCoeff[i][l];
-                const unsigned int sk = lhsIndex[i][l];
-                ddNdtByVdcTp[sk*(n_)+j0] -= sl*WdMdC0;
-                ddNdtByVdcTp[sk*(n_)+j1] -= sl*WdMdC1; 
-                ddNdtByVdcTp[sk*(n_)+j2] -= sl*WdMdC2;               
-            }
-
-            for(unsigned int l = 0; l < rhsIndex[i].size();l++)
-            {
-                const unsigned int sr = rhsstoichCoeff[i][l];
-                const unsigned int sk = rhsIndex[i][l];
-                ddNdtByVdcTp[sk*(n_)+j0] += sr*WdMdC0;  
-                ddNdtByVdcTp[sk*(n_)+j1] += sr*WdMdC1; 
-                ddNdtByVdcTp[sk*(n_)+j2] += sr*WdMdC2;                                  
-            }                     
-        }
     }   
 }

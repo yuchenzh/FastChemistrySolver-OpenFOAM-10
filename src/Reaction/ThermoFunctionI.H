@@ -34,8 +34,8 @@ inline void OptReaction::JacobianThermo
 (
     const double p,
     const double T_,
-    double* __restrict__ YTp,
-    double* __restrict__ C_,
+    double* __restrict__ Phi,
+    double* __restrict__ concentration,
     double* __restrict__ dNdtByV,
     double* __restrict__ ExpNegGstdByRT,
     double* __restrict__ dBdT,
@@ -43,8 +43,7 @@ inline void OptReaction::JacobianThermo
     double* __restrict__ Cp,
     double* __restrict__ Ha,
     double* __restrict__ rhoMvj,
-    double* __restrict__ WiByrhoM,
-    double* __restrict__ ddNdtByVdcTp
+    double* __restrict__ WiByrhoM
 ) const noexcept
 {
 
@@ -70,7 +69,7 @@ inline void OptReaction::JacobianThermo
         std::array<double,7>& d = *this->PtrCoeffs[i3];
 
         __m256d invWv = _mm256_loadu_pd(&invW[i0]);
-        __m256d YTpv = _mm256_loadu_pd(&YTp[i0]);
+        __m256d YTpv = _mm256_loadu_pd(&Phi[i0]);
         __m256d RuTByPv = _mm256_set1_pd(RuTByP);
 
         rhoMv = _mm256_fmadd_pd(RuTByPv,_mm256_mul_pd(YTpv,invWv),rhoMv);
@@ -99,6 +98,7 @@ inline void OptReaction::JacobianThermo
         vExpNegGstdByRT = _mm256_add_pd(vExpNegGstdByRT,A6);
         vExpNegGstdByRT = _mm256_fmadd_pd(A0,_mm256_set1_pd(this->logT-1),vExpNegGstdByRT);
         _mm256_storeu_pd(&ExpNegGstdByRT[i0],vExpNegGstdByRT);
+        _mm256_storeu_pd(&negGstdByRT[i0],vExpNegGstdByRT);
 
         __m256d RuInvW = _mm256_mul_pd(invWv,_mm256_set1_pd(this->Ru));
         __m256d vdCpdT = _mm256_fmadd_pd(vT,4*A4,3*A3);
@@ -128,10 +128,13 @@ inline void OptReaction::JacobianThermo
         unsigned int i = this->nSpecies -1;
 
         const std::array<double,7>& a = *this->PtrCoeffs[i];
-        this->rhoM += YTp[i]*RuTByP*invW[i];;
-        MW += YTp[i]*this->invW[i];
+        this->rhoM += Phi[i]*RuTByP*invW[i];
+        MW += Phi[i]*this->invW[i];
         dBdT[i] = (a[0]+a[5]*invT)*invT + a[1]*0.5 + T_*(a[2]*(1.0/3.0)+T_*(a[3]*0.25+a[4]*0.2*T_));
-        ExpNegGstdByRT[i] = ((((a[4]*0.05*T_+a[3]*(1.0/12.0))*T_+a[2]*(1.0/6.0))*T_+a[1]*0.5)*T_-a[5]*invT+a[6]+(this->logT-1)*a[0]);   
+        double negGstdByRT_ = ((((a[4]*0.05*T_+a[3]*(1.0/12.0))*T_+a[2]*(1.0/6.0))*T_+a[1]*0.5)*T_-a[5]*invT+a[6]+(this->logT-1)*a[0]);   
+        ExpNegGstdByRT[i] = negGstdByRT_;
+        negGstdByRT[i] = negGstdByRT_;
+        
         dCpdT[i] = ( a[1] + T_*(2*a[2]+T_*(3*a[3]+T_*4*a[4])) )*this->Ru*this->invW[i]; 
         Cp[i] = ((((a[4]*T_+a[3])*T_+a[2])*T_+a[1])*T_+a[0])*this->Ru*this->invW[i];
         Ha[i] = (((((a[4]*T_*0.2+a[3]*0.25)*T_+a[2]*(1.0/3.0))*T_+a[1]*0.5)*T_+a[0])*T_ +a[5])*this->Ru*this->invW[i]; 
@@ -144,10 +147,10 @@ inline void OptReaction::JacobianThermo
 
         std::array<double,7>& a = *this->PtrCoeffs[i0];
         std::array<double,7>& b = *this->PtrCoeffs[i1];
-        this->rhoM += YTp[i0]*RuTByP*invW[i0];
-        this->rhoM += YTp[i1]*RuTByP*invW[i1];
-        MW += YTp[i0]*this->invW[i0];
-        MW += YTp[i1]*this->invW[i1];
+        this->rhoM += Phi[i0]*RuTByP*invW[i0];
+        this->rhoM += Phi[i1]*RuTByP*invW[i1];
+        MW += Phi[i0]*this->invW[i0];
+        MW += Phi[i1]*this->invW[i1];
         
         __m256d invWv = _mm256_setr_pd(invW[i0],invW[i1],1,1);
         __m256d A0 = _mm256_setr_pd(a[0],b[0],0,0);
@@ -174,8 +177,13 @@ inline void OptReaction::JacobianThermo
         vExpNegGstdByRT = _mm256_fmsub_pd(vExpNegGstdByRT,vT,_mm256_mul_pd(A5,vInvT));    
         vExpNegGstdByRT = _mm256_add_pd(vExpNegGstdByRT,A6);
         vExpNegGstdByRT = _mm256_fmadd_pd(A0,_mm256_set1_pd(this->logT-1),vExpNegGstdByRT);
-        ExpNegGstdByRT[i0] = get_elem0(vExpNegGstdByRT);
-        ExpNegGstdByRT[i1] = get_elem1(vExpNegGstdByRT);
+        double vExpNegGstdByRT0 = get_elem0(vExpNegGstdByRT);
+        double vExpNegGstdByRT1 = get_elem1(vExpNegGstdByRT);
+        ExpNegGstdByRT[i0] = vExpNegGstdByRT0;
+        ExpNegGstdByRT[i1] = vExpNegGstdByRT1;
+
+        negGstdByRT[i0] = vExpNegGstdByRT0;
+        negGstdByRT[i1] = vExpNegGstdByRT1;
 
         __m256d RuInvW = _mm256_mul_pd(invWv,_mm256_set1_pd(this->Ru));
         __m256d vdCpdT = _mm256_fmadd_pd(vT,4*A4,3*A3);
@@ -201,7 +209,7 @@ inline void OptReaction::JacobianThermo
         vHa = _mm256_fmadd_pd(vHa,vT,A0);
         vHa = _mm256_fmadd_pd(vHa,vT,A5);
         vHa = _mm256_mul_pd(RuInvW,vHa);
-        _mm256_storeu_pd(&Ha[i0],vHa);   
+ 
         Ha[i0] = get_elem0(vHa);
         Ha[i1] = get_elem1(vHa);
 
@@ -215,13 +223,13 @@ inline void OptReaction::JacobianThermo
         std::array<double,7>& a = *this->PtrCoeffs[i0];
         std::array<double,7>& b = *this->PtrCoeffs[i1];
         std::array<double,7>& c = *this->PtrCoeffs[i2];
-        this->rhoM += YTp[i0]*RuTByP*invW[i0];
-        this->rhoM += YTp[i1]*RuTByP*invW[i1];
-        this->rhoM += YTp[i2]*RuTByP*invW[i2];    
+        this->rhoM += Phi[i0]*RuTByP*invW[i0];
+        this->rhoM += Phi[i1]*RuTByP*invW[i1];
+        this->rhoM += Phi[i2]*RuTByP*invW[i2];    
 
-        MW += YTp[i0]*this->invW[i0];
-        MW += YTp[i1]*this->invW[i1];
-        MW += YTp[i2]*this->invW[i2];
+        MW += Phi[i0]*this->invW[i0];
+        MW += Phi[i1]*this->invW[i1];
+        MW += Phi[i2]*this->invW[i2];
 
         __m256d invWv = _mm256_setr_pd(invW[i0],invW[i1],invW[i2],1);
         __m256d A0 = _mm256_setr_pd(a[0],b[0],c[0],0);
@@ -249,9 +257,16 @@ inline void OptReaction::JacobianThermo
         vExpNegGstdByRT = _mm256_fmsub_pd(vExpNegGstdByRT,vT,_mm256_mul_pd(A5,vInvT));    
         vExpNegGstdByRT = _mm256_add_pd(vExpNegGstdByRT,A6);
         vExpNegGstdByRT = _mm256_fmadd_pd(A0,_mm256_set1_pd(this->logT-1),vExpNegGstdByRT);
-        ExpNegGstdByRT[i0] = get_elem0(vExpNegGstdByRT);
-        ExpNegGstdByRT[i1] = get_elem1(vExpNegGstdByRT);
-        ExpNegGstdByRT[i2] = get_elem2(vExpNegGstdByRT);
+        double vExpNegGstdByRT0 = get_elem0(vExpNegGstdByRT);
+        double vExpNegGstdByRT1 = get_elem1(vExpNegGstdByRT);
+        double vExpNegGstdByRT2 = get_elem2(vExpNegGstdByRT);
+        ExpNegGstdByRT[i0] = vExpNegGstdByRT0;
+        ExpNegGstdByRT[i1] = vExpNegGstdByRT1;
+        ExpNegGstdByRT[i2] = vExpNegGstdByRT2;
+
+        negGstdByRT[i0] = vExpNegGstdByRT0;
+        negGstdByRT[i1] = vExpNegGstdByRT1;
+        negGstdByRT[i2] = vExpNegGstdByRT2;
 
         __m256d RuInvW = _mm256_mul_pd(invWv,_mm256_set1_pd(this->Ru));
         __m256d vdCpdT = _mm256_fmadd_pd(vT,4*A4,3*A3);
@@ -279,7 +294,7 @@ inline void OptReaction::JacobianThermo
         vHa = _mm256_fmadd_pd(vHa,vT,A0);
         vHa = _mm256_fmadd_pd(vHa,vT,A5);
         vHa = _mm256_mul_pd(RuInvW,vHa);
-        _mm256_storeu_pd(&Ha[i0],vHa);   
+
         Ha[i0] = get_elem0(vHa);
         Ha[i1] = get_elem1(vHa);
         Ha[i2] = get_elem2(vHa);
@@ -306,9 +321,9 @@ inline void OptReaction::JacobianThermo
         __m256d W_= _mm256_loadu_pd(&this->W[i]);
         __m256d WiByrhoM_ = _mm256_mul_pd(_mm256_set1_pd(invRhoM),W_);
         _mm256_storeu_pd(&WiByrhoM[i],WiByrhoM_);     
-        __m256d YTp_ = _mm256_loadu_pd(&YTp[i]);
+        __m256d YTp_ = _mm256_loadu_pd(&Phi[i]);
         __m256d Cv = _mm256_mul_pd(_mm256_mul_pd(_mm256_set1_pd(this->rhoM),YTp_),invW_);
-        _mm256_storeu_pd(&C_[i],Cv);
+        _mm256_storeu_pd(&concentration[i],Cv);
         __m256d Cp_ = _mm256_loadu_pd(&Cp[i]);
         ArrCpM_ = _mm256_fmadd_pd(YTp_,Cp_,ArrCpM_);
         __m256d dCpdT_ = _mm256_loadu_pd(&dCpdT[i]);
@@ -323,216 +338,50 @@ inline void OptReaction::JacobianThermo
         unsigned int i = this->nSpecies-1;
         rhoMvj[i] = MW*this->invW[i];
         WiByrhoM[i] = this->W[i]*invRhoM;
-        C_[i] = this->rhoM*this->invW[i]*YTp[i];
-        CpM += YTp[i]*Cp[i];
-        dCpMdT += YTp[i]*dCpdT[i];
+        concentration[i] = this->rhoM*this->invW[i]*Phi[i];
+        CpM += Phi[i]*Cp[i];
+        dCpMdT += Phi[i]*dCpdT[i];
     }
     else if(remain==2)
     {
         unsigned int i = this->nSpecies-2;
         rhoMvj[i] = MW*this->invW[i];
         WiByrhoM[i] = this->W[i]*invRhoM;
-        C_[i] = this->rhoM*this->invW[i]*YTp[i];
-        CpM += YTp[i]*Cp[i];
-        dCpMdT += YTp[i]*dCpdT[i];  
+        concentration[i] = this->rhoM*this->invW[i]*Phi[i];
+        CpM += Phi[i]*Cp[i];
+        dCpMdT += Phi[i]*dCpdT[i];  
         
         i = i + 1;
         rhoMvj[i] = MW*this->invW[i];
         WiByrhoM[i] = this->W[i]*invRhoM;
-        C_[i] = this->rhoM*this->invW[i]*YTp[i];
-        CpM += YTp[i]*Cp[i];
-        dCpMdT += YTp[i]*dCpdT[i];         
+        concentration[i] = this->rhoM*this->invW[i]*Phi[i];
+        CpM += Phi[i]*Cp[i];
+        dCpMdT += Phi[i]*dCpdT[i];         
     }
     else if(remain==3)
     {
         unsigned int i = this->nSpecies-3;
         rhoMvj[i] = MW*this->invW[i];
         WiByrhoM[i] = this->W[i]*invRhoM;
-        C_[i] = this->rhoM*this->invW[i]*YTp[i];
-        CpM += YTp[i]*Cp[i];
-        dCpMdT += YTp[i]*dCpdT[i];  
+        concentration[i] = this->rhoM*this->invW[i]*Phi[i];
+        CpM += Phi[i]*Cp[i];
+        dCpMdT += Phi[i]*dCpdT[i];  
         
         i = i + 1;
         rhoMvj[i] = MW*this->invW[i];
         WiByrhoM[i] = this->W[i]*invRhoM;
-        C_[i] = this->rhoM*this->invW[i]*YTp[i];
-        CpM += YTp[i]*Cp[i];
-        dCpMdT += YTp[i]*dCpdT[i];        
+        concentration[i] = this->rhoM*this->invW[i]*Phi[i];
+        CpM += Phi[i]*Cp[i];
+        dCpMdT += Phi[i]*dCpdT[i];        
         
         i = i + 1;
         rhoMvj[i] = MW*this->invW[i];
         WiByrhoM[i] = this->W[i]*invRhoM;
-        C_[i] = this->rhoM*this->invW[i]*YTp[i];
-        CpM += YTp[i]*Cp[i];
-        dCpMdT += YTp[i]*dCpdT[i]; 
+        concentration[i] = this->rhoM*this->invW[i]*Phi[i];
+        CpM += Phi[i]*Cp[i];
+        dCpMdT += Phi[i]*dCpdT[i]; 
     }
 
-
-}
-
-
-
-inline void OptReaction::JacobianThermo
-(
-    const double p,
-    const double T_,
-    double* __restrict__ cTp,
-    double* __restrict__ ExpNegGstdByRT,
-    double* __restrict__ dBdT,
-    double* __restrict__ dCpdT,
-    double* __restrict__ Cp,
-    double* __restrict__ Ha
-) const noexcept
-{
-    double* const* __restrict__ ArrRes = this->ArrPtr.data();
-    unsigned int remain = nSpecies%4;
-    __m256d cpMv = _mm256_setzero_pd();
-    __m256d dcpdTMv = _mm256_setzero_pd();
-    for(unsigned int i = 0; i < this->nSpecies-remain;i=i+4)
-    {
-        __m256d Cv = _mm256_loadu_pd(&cTp[i]);
-        unsigned int i0 = i+0;
-        unsigned int i1 = i+1;
-        unsigned int i2 = i+2;
-        unsigned int i3 = i+3;
-        std::array<double,7>& a = *this->PtrCoeffs[i0];
-        std::array<double,7>& b = *this->PtrCoeffs[i1];
-        std::array<double,7>& c = *this->PtrCoeffs[i2];
-        std::array<double,7>& d = *this->PtrCoeffs[i3];
-
-
-        __m256d A0 = _mm256_setr_pd(a[0],b[0],c[0],d[0]);
-        __m256d A1 = _mm256_setr_pd(a[1],b[1],c[1],d[1]);
-        __m256d A2 = _mm256_setr_pd(a[2],b[2],c[2],d[2]);
-        __m256d A3 = _mm256_setr_pd(a[3],b[3],c[3],d[3]);
-        __m256d A4 = _mm256_setr_pd(a[4],b[4],c[4],d[4]);
-        __m256d A5 = _mm256_setr_pd(a[5],b[5],c[5],d[5]);
-        __m256d A6 = _mm256_setr_pd(a[6],b[6],c[6],d[6]);
-        __m256d vT = _mm256_set1_pd(T_);
-        __m256d vInvT = _mm256_set1_pd(invT);
-
-        __m256d vdBdT = _mm256_fmadd_pd(A4*0.2 ,vT,A3*0.25);
-        vdBdT = _mm256_fmadd_pd(vdBdT,vT,A2*(1.0/3.0));      
-        vdBdT = _mm256_fmadd_pd(vdBdT,vT,A1*0.5);
-        vdBdT = _mm256_fmadd_pd(_mm256_fmadd_pd(A5,vInvT,A0),vInvT,vdBdT);
-        _mm256_storeu_pd(&dBdT[i0],vdBdT);
-
-        __m256d vExpNegGstdByRT = _mm256_fmadd_pd(A4*0.05,vT,A3*(1.0/12.0));
-        vExpNegGstdByRT = _mm256_fmadd_pd(vExpNegGstdByRT,vT,A2*(1.0/6.0));
-        vExpNegGstdByRT = _mm256_fmadd_pd(vExpNegGstdByRT,vT,A1*0.5);  
-        vExpNegGstdByRT = _mm256_fmsub_pd(vExpNegGstdByRT,vT,_mm256_mul_pd(A5,vInvT));    
-        vExpNegGstdByRT = _mm256_add_pd(vExpNegGstdByRT,A6);
-        vExpNegGstdByRT = _mm256_fmadd_pd(A0,_mm256_set1_pd(this->logT-1),vExpNegGstdByRT);
-        _mm256_storeu_pd(&ExpNegGstdByRT[i0],vExpNegGstdByRT);
-
-        __m256d Ruv = _mm256_set1_pd(this->Ru);
-        __m256d vdCpdT = _mm256_fmadd_pd(vT,4*A4,3*A3);
-        vdCpdT = _mm256_fmadd_pd(vT,vdCpdT,2*A2);  
-        vdCpdT = _mm256_fmadd_pd(vT,vdCpdT,A1);  
-        vdCpdT = _mm256_mul_pd(Ruv,vdCpdT);
-        _mm256_storeu_pd(&dCpdT[i0],vdCpdT);   
-
-        dcpdTMv = _mm256_fmadd_pd(vdCpdT,Cv,dcpdTMv);
-
-        __m256d vCp = _mm256_fmadd_pd(A4 ,vT,A3);
-        vCp = _mm256_fmadd_pd(vCp,vT,A2);
-        vCp = _mm256_fmadd_pd(vCp,vT,A1);
-        vCp = _mm256_fmadd_pd(vCp,vT,A0);
-        vCp = _mm256_mul_pd(Ruv,vCp);
-        _mm256_storeu_pd(&Cp[i0],vCp);   
-
-        cpMv = _mm256_fmadd_pd(vCp,Cv,cpMv);
-
-        __m256d vHa = _mm256_fmadd_pd(A4 ,vT*0.2,A3*0.25);
-        vHa = _mm256_fmadd_pd(vHa,vT,A2*(1.0/3.0));
-        vHa = _mm256_fmadd_pd(vHa,vT,A1*0.5);
-        vHa = _mm256_fmadd_pd(vHa,vT,A0);
-        vHa = _mm256_fmadd_pd(vHa,vT,A5);
-        vHa = _mm256_mul_pd(Ruv,vHa);
-        _mm256_storeu_pd(&Ha[i0],vHa);   
-        
-    }
-    if(remain==1)
-    {
-        unsigned int i = this->nSpecies -1;
-
-        const std::array<double,7>& a = *this->PtrCoeffs[i];
-
-
-        dBdT[i] = (a[0]+a[5]*invT)*invT + a[1]*0.5 + T_*(a[2]*(1.0/3.0)+T_*(a[3]*0.25+a[4]*0.2*T_));
-        ExpNegGstdByRT[i] = ((((a[4]*0.05*T_+a[3]*(1.0/12.0))*T_+a[2]*(1.0/6.0))*T_+a[1]*0.5)*T_-a[5]*invT+a[6]+(this->logT-1)*a[0]);   
-        dCpdT[i] = ( a[1] + T_*(2*a[2]+T_*(3*a[3]+T_*4*a[4])) )*this->Ru; 
-        Cp[i] = ((((a[4]*T_+a[3])*T_+a[2])*T_+a[1])*T_+a[0])*this->Ru;
-        Ha[i] = (((((a[4]*T_*0.2+a[3]*0.25)*T_+a[2]*(1.0/3.0))*T_+a[1]*0.5)*T_+a[0])*T_ +a[5])*this->Ru; 
-
-        dCpdT[nSpecies] += dCpdT[i]*cTp[i];
-        Cp[nSpecies] += Cp[i]*cTp[i];
-    }
-    else if(remain==2)
-    {
-
-        unsigned int i0 = this->nSpecies - 2;
-        unsigned int i1 = this->nSpecies - 1;
-
-        std::array<double,7>& a = *this->PtrCoeffs[i0];
-        std::array<double,7>& b = *this->PtrCoeffs[i1];
-
-        dBdT[i0] = (a[0]+a[5]*invT)*invT + a[1]*0.5 + T_*(a[2]*(1.0/3.0)+T_*(a[3]*0.25+a[4]*0.2*T_));
-        dBdT[i1] = (b[0]+b[5]*invT)*invT + b[1]*0.5 + T_*(b[2]*(1.0/3.0)+T_*(b[3]*0.25+b[4]*0.*T_));
-        dCpdT[i0] = ( a[1] + T_*(2*a[2]+T_*(3*a[3]+T_*4*a[4])) )*this->Ru; 
-        dCpdT[i1] = ( b[1] + T_*(2*b[2]+T_*(3*b[3]+T_*4*b[4])) )*this->Ru; 
-        Cp[i0] = ((((a[4]*T_+a[3])*T_+a[2])*T_+a[1])*T_+a[0])*this->Ru;
-        Cp[i1] = ((((b[4]*T_+b[3])*T_+b[2])*T_+b[1])*T_+b[0])*this->Ru;
-        Ha[i0] = (((((a[4]*T_*0.2+a[3]*0.25)*T_+a[2]*(1.0/3.0))*T_+a[1]*0.5)*T_+a[0])*T_ +a[5])*this->Ru; 
-        Ha[i1] = (((((b[4]*T_*0.2+b[3]*0.25)*T_+b[2]*(1.0/3.0))*T_+b[1]*0.5)*T_+b[0])*T_ +b[5])*this->Ru; 
-        ExpNegGstdByRT[i0] = (((a[4]*0.05*T_+a[3]*(1.0/12.0))*T_+a[2]*(1.0/6.0))*T_+a[1]*0.5)*T_-a[5]*invT+a[6]+(this->logT-1)*a[0]; 
-        ExpNegGstdByRT[i1] = (((b[4]*0.05*T_+b[3]*(1.0/12.0))*T_+b[2]*(1.0/6.0))*T_+b[1]*0.5)*T_-b[5]*invT+b[6]+(this->logT-1)*b[0]; 
-    
-        dCpdT[nSpecies] += dCpdT[i0]*cTp[i0];
-        dCpdT[nSpecies] += dCpdT[i1]*cTp[i1];
-        Cp[nSpecies] += Cp[i0]*cTp[i0];
-        Cp[nSpecies] += Cp[i1]*cTp[i1];
-    }
-    else if(remain==3)
-    {
-        unsigned int i0 = this->nSpecies - 3;
-        unsigned int i1 = this->nSpecies - 2;
-        unsigned int i2 = this->nSpecies - 1;
-
-        std::array<double,7>& a = *this->PtrCoeffs[i0];
-        std::array<double,7>& b = *this->PtrCoeffs[i1];
-        std::array<double,7>& c = *this->PtrCoeffs[i2];
-   
-        dBdT[i0] = (a[0]+a[5]*invT)*invT + a[1]*0.5 + T_*(a[2]*(1.0/3.0)+T_*(a[3]*0.25+a[4]*0.2*T_));
-        dBdT[i1] = (b[0]+b[5]*invT)*invT + b[1]*0.5 + T_*(b[2]*(1.0/3.0)+T_*(b[3]*0.25+b[4]*0.2*T_));
-        dBdT[i2] = (c[0]+c[5]*invT)*invT + c[1]*0.5 + T_*(c[2]*(1.0/3.0)+T_*(c[3]*0.25+c[4]*0.2*T_));
-        dCpdT[i0] = ( a[1] + T_*(2*a[2]+T_*(3*a[3]+T_*4*a[4])) )*this->Ru; 
-        dCpdT[i1] = ( b[1] + T_*(2*b[2]+T_*(3*b[3]+T_*4*b[4])) )*this->Ru; 
-        dCpdT[i2] = ( c[1] + T_*(2*c[2]+T_*(3*c[3]+T_*4*c[4])) )*this->Ru; 
-        Ha[i0] = (((((a[4]*T_*0.2+a[3]*0.25)*T_+a[2]*(1.0/3.0))*T_+a[1]*0.5)*T_+a[0])*T_ +a[5])*this->Ru; 
-        Ha[i1] = (((((b[4]*T_*0.2+b[3]*0.25)*T_+b[2]*(1.0/3.0))*T_+b[1]*0.5)*T_+b[0])*T_ +b[5])*this->Ru; 
-        Ha[i2] = (((((c[4]*T_*0.2+c[3]*0.25)*T_+c[2]*(1.0/3.0))*T_+c[1]*0.5)*T_+c[0])*T_ +c[5])*this->Ru; 
-        Cp[i0] = ((((a[4]*T_+a[3])*T_+a[2])*T_+a[1])*T_+a[0])*this->Ru;
-        Cp[i1] = ((((b[4]*T_+b[3])*T_+b[2])*T_+b[1])*T_+b[0])*this->Ru; 
-        Cp[i2] = ((((c[4]*T_+c[3])*T_+c[2])*T_+c[1])*T_+c[0])*this->Ru;
-        ExpNegGstdByRT[i0] = (((a[4]*0.05*T_+a[3]*(1.0/12.0))*T_+a[2]*(1.0/6.0))*T_+a[1]*0.5)*T_-a[5]*invT+a[6]+(this->logT-1)*a[0]; 
-        ExpNegGstdByRT[i1] = (((b[4]*0.05*T_+b[3]*(1.0/12.0))*T_+b[2]*(1.0/6.0))*T_+b[1]*0.5)*T_-b[5]*invT+b[6]+(this->logT-1)*b[0]; 
-        ExpNegGstdByRT[i2] = (((c[4]*0.05*T_+c[3]*(1.0/12.0))*T_+c[2]*(1.0/6.0))*T_+c[1]*0.5)*T_-c[5]*invT+c[6]+(this->logT-1)*c[0]; 
-    
-    
-        dCpdT[nSpecies] += dCpdT[i0]*cTp[i0];
-        dCpdT[nSpecies] += dCpdT[i1]*cTp[i1];
-        dCpdT[nSpecies] += dCpdT[i2]*cTp[i2];
-        Cp[nSpecies] += Cp[i0]*cTp[i0];
-        Cp[nSpecies] += Cp[i1]*cTp[i1];
-        Cp[nSpecies] += Cp[i2]*cTp[i2];
-    }
-
-    _mm256_storeu_pd(&ArrRes[0][0],cpMv);
-    _mm256_storeu_pd(&ArrRes[1][0],dcpdTMv);
-
-    Cp[nSpecies] = Cp[nSpecies]         +ArrRes[0][0]+ArrRes[0][1]+ArrRes[0][2]+ArrRes[0][3];
-    dCpdT[nSpecies] = dCpdT[nSpecies]   +ArrRes[1][0]+ArrRes[1][1]+ArrRes[1][2]+ArrRes[1][3];
 
 }
 
@@ -575,6 +424,8 @@ inline void OptReaction::CpHaExpNegGstdByRT
         vExpNegGstdByRT = _mm256_fmsub_pd(vExpNegGstdByRT,vT,_mm256_mul_pd(A5,vInvT));    
         vExpNegGstdByRT = _mm256_add_pd(vExpNegGstdByRT,A6);
         vExpNegGstdByRT = _mm256_fmadd_pd(A0,_mm256_set1_pd(this->logT-1),vExpNegGstdByRT);
+        _mm256_storeu_pd(&ExpNegGstdByRT[i0],vExpNegGstdByRT);
+        _mm256_storeu_pd(&negGstdByRT[i0],vExpNegGstdByRT);
 
         __m256d vCp = _mm256_fmadd_pd(A4 ,vT,A3);
         vCp = _mm256_fmadd_pd(vCp,vT,A2);
@@ -590,7 +441,7 @@ inline void OptReaction::CpHaExpNegGstdByRT
         vHa = _mm256_fmadd_pd(vHa,vT,A5);
         vHa = _mm256_mul_pd(RuInvW,vHa);
         _mm256_storeu_pd(&Ha[i0],vHa);   
-        _mm256_storeu_pd(&ExpNegGstdByRT[i0],vExpNegGstdByRT);
+        
     }
     if(remain ==1)
     {
@@ -598,7 +449,9 @@ inline void OptReaction::CpHaExpNegGstdByRT
         const std::array<double,7>& a = *this->PtrCoeffs[i0];        
         Cp[i0] = ((((a[4]*T_+a[3])*T_+a[2])*T_+a[1])*T_+a[0])*this->Ru*this->invW[i0];
         Ha[i0] = (((((a[4]*T_*0.2+a[3]*0.25)*T_+a[2]*(1.0/3.0))*T_+a[1]*0.5)*T_+a[0])*T_ +a[5])*this->Ru*this->invW[i0]; 
-        ExpNegGstdByRT[i0] = (((a[4]*0.05*T_+a[3]*(1.0/12.0))*T_+a[2]*(1.0/6.0))*T_+a[1]*0.5)*T_-a[5]*invT+a[6]+(this->logT-1)*a[0];    
+        double negGstdByRT_ = (((a[4]*0.05*T_+a[3]*(1.0/12.0))*T_+a[2]*(1.0/6.0))*T_+a[1]*0.5)*T_-a[5]*invT+a[6]+(this->logT-1)*a[0];
+        ExpNegGstdByRT[i0] = negGstdByRT_;
+        negGstdByRT[i0] = negGstdByRT_;
     }
     else if(remain==2)
     {
@@ -610,9 +463,13 @@ inline void OptReaction::CpHaExpNegGstdByRT
         Cp[i1] = ((((b[4]*T_+b[3])*T_+b[2])*T_+b[1])*T_+b[0])*this->Ru*this->invW[i1]; 
         Ha[i0] = (((((a[4]*T_*0.2+a[3]*0.25)*T_+a[2]*(1.0/3.0))*T_+a[1]*0.5)*T_+a[0])*T_ +a[5])*this->Ru*this->invW[i0]; 
         Ha[i1] = (((((b[4]*T_*0.2+b[3]*0.25)*T_+b[2]*(1.0/3.0))*T_+b[1]*0.5)*T_+b[0])*T_ +b[5])*this->Ru*this->invW[i1]; 
-        ExpNegGstdByRT[i0] = (((a[4]*0.05*T_+a[3]*(1.0/12.0))*T_+a[2]*(1.0/6.0))*T_+a[1]*0.5)*T_-a[5]*invT+a[6]+(this->logT-1)*a[0]; 
-        ExpNegGstdByRT[i1] = (((b[4]*0.05*T_+b[3]*(1.0/12.0))*T_+b[2]*(1.0/6.0))*T_+b[1]*0.5)*T_-b[5]*invT+b[6]+(this->logT-1)*b[0]; 
 
+        double negGstdByRT_0 = (((a[4]*0.05*T_+a[3]*(1.0/12.0))*T_+a[2]*(1.0/6.0))*T_+a[1]*0.5)*T_-a[5]*invT+a[6]+(this->logT-1)*a[0]; 
+        double negGstdByRT_1 = (((b[4]*0.05*T_+b[3]*(1.0/12.0))*T_+b[2]*(1.0/6.0))*T_+b[1]*0.5)*T_-b[5]*invT+b[6]+(this->logT-1)*b[0]; 
+        ExpNegGstdByRT[i0] = negGstdByRT_0;
+        ExpNegGstdByRT[i1] = negGstdByRT_1;
+        negGstdByRT[i0] = negGstdByRT_0;
+        negGstdByRT[i1] = negGstdByRT_1;        
     }
     else if(remain==3)
     {
@@ -628,108 +485,21 @@ inline void OptReaction::CpHaExpNegGstdByRT
         Ha[i0] = (((((a[4]*T_*0.2+a[3]*0.25)*T_+a[2]*(1.0/3.0))*T_+a[1]*0.5)*T_+a[0])*T_ +a[5])*this->Ru*this->invW[i0]; 
         Ha[i1] = (((((b[4]*T_*0.2+b[3]*0.25)*T_+b[2]*(1.0/3.0))*T_+b[1]*0.5)*T_+b[0])*T_ +b[5])*this->Ru*this->invW[i1]; 
         Ha[i2] = (((((c[4]*T_*0.2+c[3]*0.25)*T_+c[2]*(1.0/3.0))*T_+c[1]*0.5)*T_+c[0])*T_ +c[5])*this->Ru*this->invW[i2]; 
-        ExpNegGstdByRT[i0] = (((a[4]*0.05*T_+a[3]*(1.0/12.0))*T_+a[2]*(1.0/6.0))*T_+a[1]*0.5)*T_-a[5]*invT+a[6]+(this->logT-1)*a[0]; 
-        ExpNegGstdByRT[i1] = (((b[4]*0.05*T_+b[3]*(1.0/12.0))*T_+b[2]*(1.0/6.0))*T_+b[1]*0.5)*T_-b[5]*invT+b[6]+(this->logT-1)*b[0]; 
-        ExpNegGstdByRT[i2] = (((c[4]*0.05*T_+c[3]*(1.0/12.0))*T_+c[2]*(1.0/6.0))*T_+c[1]*0.5)*T_-c[5]*invT+c[6]+(this->logT-1)*c[0]; 
+        
+        double  ExpNegGstdByRT0 = (((a[4]*0.05*T_+a[3]*(1.0/12.0))*T_+a[2]*(1.0/6.0))*T_+a[1]*0.5)*T_-a[5]*invT+a[6]+(this->logT-1)*a[0]; 
+        double  ExpNegGstdByRT1 = (((b[4]*0.05*T_+b[3]*(1.0/12.0))*T_+b[2]*(1.0/6.0))*T_+b[1]*0.5)*T_-b[5]*invT+b[6]+(this->logT-1)*b[0]; 
+        double  ExpNegGstdByRT2 = (((c[4]*0.05*T_+c[3]*(1.0/12.0))*T_+c[2]*(1.0/6.0))*T_+c[1]*0.5)*T_-c[5]*invT+c[6]+(this->logT-1)*c[0]; 
+            
+        ExpNegGstdByRT[i0] = ExpNegGstdByRT0; 
+        ExpNegGstdByRT[i1] = ExpNegGstdByRT1; 
+        ExpNegGstdByRT[i2] = ExpNegGstdByRT2;
+        
+        negGstdByRT[i0] = ExpNegGstdByRT0; 
+        negGstdByRT[i1] = ExpNegGstdByRT1; 
+        negGstdByRT[i2] = ExpNegGstdByRT2;     
     }
 }
 
-inline void OptReaction::cphaExpNegGstdByRT
-(
-    const double T_,
-    double* __restrict__ Cp,
-    double* __restrict__ Ha,
-    double* __restrict__ ExpNegGstdByRT
-)const noexcept
-{
-    unsigned int remain = this->nSpecies%4;
-
-    for(unsigned int i = 0; i < this->nSpecies-remain;i=i+4)
-    {
-        unsigned int i0 = i+0;
-        unsigned int i1 = i+1;
-        unsigned int i2 = i+2;
-        unsigned int i3 = i+3;        
-
-        const std::array<double,7>& a = *this->PtrCoeffs[i0];        
-        const std::array<double,7>& b = *this->PtrCoeffs[i1];
-        const std::array<double,7>& c = *this->PtrCoeffs[i2];   
-        const std::array<double,7>& d = *this->PtrCoeffs[i3]; 
-        __m256d A0 = _mm256_setr_pd(a[0],b[0],c[0],d[0]);
-        __m256d A1 = _mm256_setr_pd(a[1],b[1],c[1],d[1]);
-        __m256d A2 = _mm256_setr_pd(a[2],b[2],c[2],d[2]);
-        __m256d A3 = _mm256_setr_pd(a[3],b[3],c[3],d[3]);
-        __m256d A4 = _mm256_setr_pd(a[4],b[4],c[4],d[4]);
-        __m256d A5 = _mm256_setr_pd(a[5],b[5],c[5],d[5]);
-        __m256d A6 = _mm256_setr_pd(a[6],b[6],c[6],d[6]);
-        __m256d vT = _mm256_set1_pd(T_);
-        __m256d vInvT = _mm256_set1_pd(invT);
-        __m256d Ruv = _mm256_set1_pd(this->Ru);
-
-        __m256d vExpNegGstdByRT = _mm256_fmadd_pd(A4*0.05,vT,A3*(1.0/12.0));
-        vExpNegGstdByRT = _mm256_fmadd_pd(vExpNegGstdByRT,vT,A2*(1.0/6.0));
-        vExpNegGstdByRT = _mm256_fmadd_pd(vExpNegGstdByRT,vT,A1*0.5);  
-        vExpNegGstdByRT = _mm256_fmsub_pd(vExpNegGstdByRT,vT,_mm256_mul_pd(A5,vInvT));    
-        vExpNegGstdByRT = _mm256_add_pd(vExpNegGstdByRT,A6);
-        vExpNegGstdByRT = _mm256_fmadd_pd(A0,_mm256_set1_pd(this->logT-1),vExpNegGstdByRT);
-
-        __m256d vCp = _mm256_fmadd_pd(A4 ,vT,A3);
-        vCp = _mm256_fmadd_pd(vCp,vT,A2);
-        vCp = _mm256_fmadd_pd(vCp,vT,A1);
-        vCp = _mm256_fmadd_pd(vCp,vT,A0);
-        vCp = _mm256_mul_pd(Ruv,vCp);
-        _mm256_storeu_pd(&Cp[i0],vCp);   
-
-        __m256d vHa = _mm256_fmadd_pd(A4 ,vT*0.2,A3*0.25);
-        vHa = _mm256_fmadd_pd(vHa,vT,A2*(1.0/3.0));
-        vHa = _mm256_fmadd_pd(vHa,vT,A1*0.5);
-        vHa = _mm256_fmadd_pd(vHa,vT,A0);
-        vHa = _mm256_fmadd_pd(vHa,vT,A5);
-        vHa = _mm256_mul_pd(Ruv,vHa);
-        _mm256_storeu_pd(&Ha[i0],vHa);   
-        _mm256_storeu_pd(&ExpNegGstdByRT[i0],vExpNegGstdByRT);
-    }
-    if(remain ==1)
-    {
-        unsigned int i0 = this->nSpecies-1;
-        const std::array<double,7>& a = *this->PtrCoeffs[i0];        
-        Cp[i0] = ((((a[4]*T_+a[3])*T_+a[2])*T_+a[1])*T_+a[0])*this->Ru;
-        Ha[i0] = (((((a[4]*T_*0.2+a[3]*0.25)*T_+a[2]*(1.0/3.0))*T_+a[1]*0.5)*T_+a[0])*T_ +a[5])*this->Ru; 
-        ExpNegGstdByRT[i0] = (((a[4]*0.05*T_+a[3]*(1.0/12.0))*T_+a[2]*(1.0/6.0))*T_+a[1]*0.5)*T_-a[5]*invT+a[6]+(this->logT-1)*a[0];    
-    }
-    else if(remain==2)
-    {
-        unsigned int i0 = this->nSpecies-2;
-        unsigned int i1 = this->nSpecies-1;
-        const std::array<double,7>& a = *this->PtrCoeffs[i0];        
-        const std::array<double,7>& b = *this->PtrCoeffs[i1];
-        Cp[i0] = ((((a[4]*T_+a[3])*T_+a[2])*T_+a[1])*T_+a[0])*this->Ru;
-        Cp[i1] = ((((b[4]*T_+b[3])*T_+b[2])*T_+b[1])*T_+b[0])*this->Ru; 
-        Ha[i0] = (((((a[4]*T_*0.2+a[3]*0.25)*T_+a[2]*(1.0/3.0))*T_+a[1]*0.5)*T_+a[0])*T_ +a[5])*this->Ru; 
-        Ha[i1] = (((((b[4]*T_*0.2+b[3]*0.25)*T_+b[2]*(1.0/3.0))*T_+b[1]*0.5)*T_+b[0])*T_ +b[5])*this->Ru; 
-        ExpNegGstdByRT[i0] = (((a[4]*0.05*T_+a[3]*(1.0/12.0))*T_+a[2]*(1.0/6.0))*T_+a[1]*0.5)*T_-a[5]*invT+a[6]+(this->logT-1)*a[0]; 
-        ExpNegGstdByRT[i1] = (((b[4]*0.05*T_+b[3]*(1.0/12.0))*T_+b[2]*(1.0/6.0))*T_+b[1]*0.5)*T_-b[5]*invT+b[6]+(this->logT-1)*b[0]; 
-
-    }
-    else if(remain==3)
-    {
-        unsigned int i0 = this->nSpecies-3;
-        unsigned int i1 = this->nSpecies-2;
-        unsigned int i2 = this->nSpecies-1;      
-        const std::array<double,7>& a = *this->PtrCoeffs[i0]; 
-        const std::array<double,7>& b = *this->PtrCoeffs[i1];        
-        const std::array<double,7>& c = *this->PtrCoeffs[i2];
-        Cp[i0] = ((((a[4]*T_+a[3])*T_+a[2])*T_+a[1])*T_+a[0])*this->Ru;
-        Cp[i1] = ((((b[4]*T_+b[3])*T_+b[2])*T_+b[1])*T_+b[0])*this->Ru; 
-        Cp[i2] = ((((c[4]*T_+c[3])*T_+c[2])*T_+c[1])*T_+c[0])*this->Ru;
-        Ha[i0] = (((((a[4]*T_*0.2+a[3]*0.25)*T_+a[2]*(1.0/3.0))*T_+a[1]*0.5)*T_+a[0])*T_ +a[5])*this->Ru; 
-        Ha[i1] = (((((b[4]*T_*0.2+b[3]*0.25)*T_+b[2]*(1.0/3.0))*T_+b[1]*0.5)*T_+b[0])*T_ +b[5])*this->Ru; 
-        Ha[i2] = (((((c[4]*T_*0.2+c[3]*0.25)*T_+c[2]*(1.0/3.0))*T_+c[1]*0.5)*T_+c[0])*T_ +c[5])*this->Ru; 
-        ExpNegGstdByRT[i0] = (((a[4]*0.05*T_+a[3]*(1.0/12.0))*T_+a[2]*(1.0/6.0))*T_+a[1]*0.5)*T_-a[5]*invT+a[6]+(this->logT-1)*a[0]; 
-        ExpNegGstdByRT[i1] = (((b[4]*0.05*T_+b[3]*(1.0/12.0))*T_+b[2]*(1.0/6.0))*T_+b[1]*0.5)*T_-b[5]*invT+b[6]+(this->logT-1)*b[0]; 
-        ExpNegGstdByRT[i2] = (((c[4]*0.05*T_+c[3]*(1.0/12.0))*T_+c[2]*(1.0/6.0))*T_+c[1]*0.5)*T_-c[5]*invT+c[6]+(this->logT-1)*c[0]; 
-    }
-}
 
 inline void OptReaction::ExpNegGstdByRT (const double T_, double* ExpNegGstdByRT)const
 {  
@@ -765,13 +535,16 @@ inline void OptReaction::ExpNegGstdByRT (const double T_, double* ExpNegGstdByRT
         vExpNegGstdByRT = _mm256_add_pd(vExpNegGstdByRT,A6);
         vExpNegGstdByRT = _mm256_fmadd_pd(A0,_mm256_set1_pd(this->logT-1),vExpNegGstdByRT);
         _mm256_storeu_pd(&ExpNegGstdByRT[i0],vExpNegGstdByRT);
+        _mm256_storeu_pd(&negGstdByRT[i0],vExpNegGstdByRT);
 
     }
     if(remain ==1)
     {
         unsigned int i0 = this->nSpecies-1;
         const std::array<double,7>& a = *this->PtrCoeffs[i0];        
-        ExpNegGstdByRT[i0] = (((a[4]*0.05*T_+a[3]*(1.0/12.0))*T_+a[2]*(1.0/6.0))*T_+a[1]*0.5)*T_-a[5]*invT+a[6]+(this->logT-1)*a[0]; 
+        double ExpNegGstdByRT_ = (((a[4]*0.05*T_+a[3]*(1.0/12.0))*T_+a[2]*(1.0/6.0))*T_+a[1]*0.5)*T_-a[5]*invT+a[6]+(this->logT-1)*a[0]; 
+        ExpNegGstdByRT[i0] = ExpNegGstdByRT_;
+        negGstdByRT[i0] = ExpNegGstdByRT_;         
     }
     else if(remain==2)
     {
@@ -779,8 +552,12 @@ inline void OptReaction::ExpNegGstdByRT (const double T_, double* ExpNegGstdByRT
         unsigned int i1 = this->nSpecies-1;      
         const std::array<double,7>& a = *this->PtrCoeffs[i0];        
         const std::array<double,7>& b = *this->PtrCoeffs[i1];   
-        ExpNegGstdByRT[i0] = (((a[4]*0.05*T_+a[3]*(1.0/12.0))*T_+a[2]*(1.0/6.0))*T_+a[1]*0.5)*T_-a[5]*invT+a[6]+(this->logT-1)*a[0]; 
-        ExpNegGstdByRT[i1] = (((b[4]*0.05*T_+b[3]*(1.0/12.0))*T_+b[2]*(1.0/6.0))*T_+b[1]*0.5)*T_-b[5]*invT+b[6]+(this->logT-1)*b[0]; 
+        double ExpNegGstdByRT_0 = (((a[4]*0.05*T_+a[3]*(1.0/12.0))*T_+a[2]*(1.0/6.0))*T_+a[1]*0.5)*T_-a[5]*invT+a[6]+(this->logT-1)*a[0]; 
+        double ExpNegGstdByRT_1 = (((b[4]*0.05*T_+b[3]*(1.0/12.0))*T_+b[2]*(1.0/6.0))*T_+b[1]*0.5)*T_-b[5]*invT+b[6]+(this->logT-1)*b[0]; 
+        ExpNegGstdByRT[i0] = ExpNegGstdByRT_0; 
+        ExpNegGstdByRT[i1] = ExpNegGstdByRT_1; 
+        negGstdByRT[i0] = ExpNegGstdByRT_0; 
+        negGstdByRT[i1] = ExpNegGstdByRT_1;     
     }
     else if(remain==3)
     {
@@ -790,185 +567,18 @@ inline void OptReaction::ExpNegGstdByRT (const double T_, double* ExpNegGstdByRT
         const std::array<double,7>& a = *this->PtrCoeffs[i0];        
         const std::array<double,7>& b = *this->PtrCoeffs[i1]; 
         const std::array<double,7>& c = *this->PtrCoeffs[i2]; 
-        ExpNegGstdByRT[i0] = (((a[4]*0.05*T_+a[3]*(1.0/12.0))*T_+a[2]*(1.0/6.0))*T_+a[1]*0.5)*T_-a[5]*invT+a[6]+(this->logT-1)*a[0];
-        ExpNegGstdByRT[i1] = (((b[4]*0.05*T_+b[3]*(1.0/12.0))*T_+b[2]*(1.0/6.0))*T_+b[1]*0.5)*T_-b[5]*invT+b[6]+(this->logT-1)*b[0];
-        ExpNegGstdByRT[i2] = (((c[4]*0.05*T_+c[3]*(1.0/12.0))*T_+c[2]*(1.0/6.0))*T_+c[1]*0.5)*T_-c[5]*invT+c[6]+(this->logT-1)*c[0];
+        double ExpNegGstdByRT_0 = (((a[4]*0.05*T_+a[3]*(1.0/12.0))*T_+a[2]*(1.0/6.0))*T_+a[1]*0.5)*T_-a[5]*invT+a[6]+(this->logT-1)*a[0];
+        double ExpNegGstdByRT_1 = (((b[4]*0.05*T_+b[3]*(1.0/12.0))*T_+b[2]*(1.0/6.0))*T_+b[1]*0.5)*T_-b[5]*invT+b[6]+(this->logT-1)*b[0];
+        double ExpNegGstdByRT_2 = (((c[4]*0.05*T_+c[3]*(1.0/12.0))*T_+c[2]*(1.0/6.0))*T_+c[1]*0.5)*T_-c[5]*invT+c[6]+(this->logT-1)*c[0];
+    
+        ExpNegGstdByRT[i0] = ExpNegGstdByRT_0;
+        ExpNegGstdByRT[i1] = ExpNegGstdByRT_1;
+        ExpNegGstdByRT[i2] = ExpNegGstdByRT_2;
+
+        negGstdByRT[i0] = ExpNegGstdByRT_0;
+        negGstdByRT[i1] = ExpNegGstdByRT_1;
+        negGstdByRT[i2] = ExpNegGstdByRT_2;        
     }
-}
-
-inline void OptReaction::CpHa
-(
-    const double T_,
-    double* __restrict__ Cp,
-    double* __restrict__ Ha
-)const
-{
-
-    unsigned int remain = this->nSpecies%4;
-    for(unsigned int i = 0; i < this->nSpecies-remain;i=i+4)
-    {
-        unsigned int i0 = i+0;
-        unsigned int i1 = i+1;
-        unsigned int i2 = i+2;
-        unsigned int i3 = i+3;        
-
-        const std::array<double,7>& a = *this->PtrCoeffs[i0];
-        const std::array<double,7>& b = *this->PtrCoeffs[i1];    
-        const std::array<double,7>& c = *this->PtrCoeffs[i2];
-        const std::array<double,7>& d = *this->PtrCoeffs[i3];
-
-        __m256d A0 = _mm256_setr_pd(a[0],b[0],c[0],d[0]);
-        __m256d A1 = _mm256_setr_pd(a[1],b[1],c[1],d[1]);
-        __m256d A2 = _mm256_setr_pd(a[2],b[2],c[2],d[2]);
-        __m256d A3 = _mm256_setr_pd(a[3],b[3],c[3],d[3]);
-        __m256d A4 = _mm256_setr_pd(a[4],b[4],c[4],d[4]);
-        __m256d A5 = _mm256_setr_pd(a[5],b[5],c[5],d[5]);
-        __m256d vT = _mm256_set1_pd(T_);
-        __m256d RuInvW = _mm256_loadu_pd(&this->invW[i0]);
-        RuInvW = _mm256_mul_pd(RuInvW,_mm256_set1_pd(this->Ru));
-
-        __m256d vCp = _mm256_fmadd_pd(A4 ,vT,A3);
-        vCp = _mm256_fmadd_pd(vCp,vT,A2);
-        vCp = _mm256_fmadd_pd(vCp,vT,A1);
-        vCp = _mm256_fmadd_pd(vCp,vT,A0);
-        vCp = _mm256_mul_pd(RuInvW,vCp);
-        _mm256_storeu_pd(&Cp[i0],vCp);   
-
-        __m256d vHa = _mm256_fmadd_pd(A4 ,vT*0.2,A3*0.25);
-        vHa = _mm256_fmadd_pd(vHa,vT,A2*(1.0/3.0));
-        vHa = _mm256_fmadd_pd(vHa,vT,A1*0.5);
-        vHa = _mm256_fmadd_pd(vHa,vT,A0);
-        vHa = _mm256_fmadd_pd(vHa,vT,A5);
-        vHa = _mm256_mul_pd(RuInvW,vHa);
-        _mm256_storeu_pd(&Ha[i0],vHa);   
-
-    }
-    if(remain ==1)
-    {
-        unsigned int i0 = this->nSpecies-1;
-        const std::array<double,7>& a = *this->PtrCoeffs[i0];        
-        Cp[i0] = ((((a[4]*T_+a[3])*T_+a[2])*T_+a[1])*T_+a[0])*this->Ru*this->invW[i0];
-        Ha[i0] = (((((a[4]*T_*0.2+a[3]*0.25)*T_+a[2]*(1.0/3.0))*T_+a[1]*0.5)*T_+a[0])*T_ +a[5])*this->Ru*this->invW[i0];
-
-    }
-    else if(remain==2)
-    {
-        unsigned int i0 = this->nSpecies-2;
-        unsigned int i1 = this->nSpecies-1;      
-        const std::array<double,7>& a = *this->PtrCoeffs[i0];   
-        const std::array<double,7>& b = *this->PtrCoeffs[i1]; 
-        Cp[i0] = ((((a[4]*T_+a[3])*T_+a[2])*T_+a[1])*T_+a[0])*this->Ru*this->invW[i0];
-        Cp[i1] = ((((b[4]*T_+b[3])*T_+b[2])*T_+b[1])*T_+b[0])*this->Ru*this->invW[i1];
-        Ha[i0] = (((((a[4]*T_*0.2+a[3]*0.25)*T_+a[2]*(1.0/3.0))*T_+a[1]*0.5)*T_+a[0])*T_ +a[5])*this->Ru*this->invW[i0];
-        Ha[i1] = (((((b[4]*T_*0.2+b[3]*0.25)*T_+b[2]*(1.0/3.0))*T_+b[1]*0.5)*T_+b[0])*T_ +b[5])*this->Ru*this->invW[i1];    
-    }
-    else if(remain==3)
-    {
-        unsigned int i0 = this->nSpecies-3;
-        unsigned int i1 = this->nSpecies-2;
-        unsigned int i2 = this->nSpecies-1;      
-        const std::array<double,7>& a = *this->PtrCoeffs[i0];     
-        const std::array<double,7>& b = *this->PtrCoeffs[i1];  
-        const std::array<double,7>& c = *this->PtrCoeffs[i2]; 
-        Cp[i0] = ((((a[4]*T_+a[3])*T_+a[2])*T_+a[1])*T_+a[0])*this->Ru*this->invW[i0];
-        Cp[i1] = ((((b[4]*T_+b[3])*T_+b[2])*T_+b[1])*T_+b[0])*this->Ru*this->invW[i1];
-        Cp[i2] = ((((c[4]*T_+c[3])*T_+c[2])*T_+c[1])*T_+c[0])*this->Ru*this->invW[i2];
-        Ha[i0] = (((((a[4]*T_*0.2+a[3]*0.25)*T_+a[2]*(1.0/3.0))*T_+a[1]*0.5)*T_+a[0])*T_ +a[5])*this->Ru*this->invW[i0];
-        Ha[i1] = (((((b[4]*T_*0.2+b[3]*0.25)*T_+b[2]*(1.0/3.0))*T_+b[1]*0.5)*T_+b[0])*T_ +b[5])*this->Ru*this->invW[i1];
-        Ha[i2] = (((((c[4]*T_*0.2+c[3]*0.25)*T_+c[2]*(1.0/3.0))*T_+c[1]*0.5)*T_+c[0])*T_ +c[5])*this->Ru*this->invW[i2]; 
-    }
-}
-
-inline void OptReaction::cpha
-(
-    const double T_,
-    double* __restrict__ Cp,
-    double* __restrict__ Ha
-)const
-{
-
-    unsigned int remain = this->nSpecies%4;
-    for(unsigned int i = 0; i < this->nSpecies-remain;i=i+4)
-    {
-        unsigned int i0 = i+0;
-        unsigned int i1 = i+1;
-        unsigned int i2 = i+2;
-        unsigned int i3 = i+3;        
-
-        const std::array<double,7>& a = *this->PtrCoeffs[i0];
-        const std::array<double,7>& b = *this->PtrCoeffs[i1];    
-        const std::array<double,7>& c = *this->PtrCoeffs[i2];
-        const std::array<double,7>& d = *this->PtrCoeffs[i3];
-
-        __m256d A0 = _mm256_setr_pd(a[0],b[0],c[0],d[0]);
-        __m256d A1 = _mm256_setr_pd(a[1],b[1],c[1],d[1]);
-        __m256d A2 = _mm256_setr_pd(a[2],b[2],c[2],d[2]);
-        __m256d A3 = _mm256_setr_pd(a[3],b[3],c[3],d[3]);
-        __m256d A4 = _mm256_setr_pd(a[4],b[4],c[4],d[4]);
-        __m256d A5 = _mm256_setr_pd(a[5],b[5],c[5],d[5]);
-        __m256d vT = _mm256_set1_pd(T_);
-        __m256d Ruv = _mm256_set1_pd(this->Ru);
-
-        __m256d vCp = _mm256_fmadd_pd(A4 ,vT,A3);
-        vCp = _mm256_fmadd_pd(vCp,vT,A2);
-        vCp = _mm256_fmadd_pd(vCp,vT,A1);
-        vCp = _mm256_fmadd_pd(vCp,vT,A0);
-        vCp = _mm256_mul_pd(Ruv,vCp);
-        _mm256_storeu_pd(&Cp[i0],vCp);   
-
-        __m256d vHa = _mm256_fmadd_pd(A4 ,vT*0.2,A3*0.25);
-        vHa = _mm256_fmadd_pd(vHa,vT,A2*(1.0/3.0));
-        vHa = _mm256_fmadd_pd(vHa,vT,A1*0.5);
-        vHa = _mm256_fmadd_pd(vHa,vT,A0);
-        vHa = _mm256_fmadd_pd(vHa,vT,A5);
-        vHa = _mm256_mul_pd(Ruv,vHa);
-        _mm256_storeu_pd(&Ha[i0],vHa);   
-
-    }
-    if(remain ==1)
-    {
-        unsigned int i0 = this->nSpecies-1;
-        const std::array<double,7>& a = *this->PtrCoeffs[i0];        
-        Cp[i0] = ((((a[4]*T_+a[3])*T_+a[2])*T_+a[1])*T_+a[0])*this->Ru;
-        Ha[i0] = (((((a[4]*T_*0.2+a[3]*0.25)*T_+a[2]*(1.0/3.0))*T_+a[1]*0.5)*T_+a[0])*T_ +a[5])*this->Ru;
-
-    }
-    else if(remain==2)
-    {
-        unsigned int i0 = this->nSpecies-2;
-        unsigned int i1 = this->nSpecies-1;      
-        const std::array<double,7>& a = *this->PtrCoeffs[i0];   
-        const std::array<double,7>& b = *this->PtrCoeffs[i1]; 
-        Cp[i0] = ((((a[4]*T_+a[3])*T_+a[2])*T_+a[1])*T_+a[0])*this->Ru;
-        Cp[i1] = ((((b[4]*T_+b[3])*T_+b[2])*T_+b[1])*T_+b[0])*this->Ru;
-        Ha[i0] = (((((a[4]*T_*0.2+a[3]*0.25)*T_+a[2]*(1.0/3.0))*T_+a[1]*0.5)*T_+a[0])*T_ +a[5])*this->Ru;
-        Ha[i1] = (((((b[4]*T_*0.2+b[3]*0.25)*T_+b[2]*(1.0/3.0))*T_+b[1]*0.5)*T_+b[0])*T_ +b[5])*this->Ru;    
-    }
-    else if(remain==3)
-    {
-        unsigned int i0 = this->nSpecies-3;
-        unsigned int i1 = this->nSpecies-2;
-        unsigned int i2 = this->nSpecies-1;      
-        const std::array<double,7>& a = *this->PtrCoeffs[i0];     
-        const std::array<double,7>& b = *this->PtrCoeffs[i1];  
-        const std::array<double,7>& c = *this->PtrCoeffs[i2]; 
-        Cp[i0] = ((((a[4]*T_+a[3])*T_+a[2])*T_+a[1])*T_+a[0])*this->Ru;
-        Cp[i1] = ((((b[4]*T_+b[3])*T_+b[2])*T_+b[1])*T_+b[0])*this->Ru;
-        Cp[i2] = ((((c[4]*T_+c[3])*T_+c[2])*T_+c[1])*T_+c[0])*this->Ru;
-        Ha[i0] = (((((a[4]*T_*0.2+a[3]*0.25)*T_+a[2]*(1.0/3.0))*T_+a[1]*0.5)*T_+a[0])*T_ +a[5])*this->Ru;
-        Ha[i1] = (((((b[4]*T_*0.2+b[3]*0.25)*T_+b[2]*(1.0/3.0))*T_+b[1]*0.5)*T_+b[0])*T_ +b[5])*this->Ru;
-        Ha[i2] = (((((c[4]*T_*0.2+c[3]*0.25)*T_+c[2]*(1.0/3.0))*T_+c[1]*0.5)*T_+c[0])*T_ +c[5])*this->Ru; 
-    }
-}
-
-inline double OptReaction::rho
-(
-    const double P,
-    const double T_,
-    const unsigned i
-)const
-{
-    return (this->W[i]*P)/(this->Ru*T_);
 }
 
 

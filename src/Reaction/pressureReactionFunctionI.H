@@ -24,7 +24,7 @@ inline void OptReaction::SRI_F
 ) const
 {
     __m256d small = _mm256_set1_pd(2.2e-16);
-    __m256d Pr_ = _mm256_loadu_pd(&Pr[0]);
+    __m256d Pr_ = _mm256_loadu_pd(Pr);
     Pr_ = _mm256_max_pd(small,Pr_);
     const double invLog10 = 1.0/std::log(10);
     __m256d logPr_ = _mm256_mul_pd(vec256_logd(Pr_),_mm256_set1_pd(invLog10));
@@ -81,7 +81,7 @@ inline void OptReaction::SRI_F_dFdT_dFdPr
 ) const
 {
     __m256d small = _mm256_set1_pd(2.2e-16);
-    __m256d Pr_ = _mm256_loadu_pd(&Pr[0]);
+    __m256d Pr_ = Pr;
     __m256d cmp = _mm256_cmp_pd(Pr_,small,_CMP_GE_OQ);
     Pr = _mm256_add_pd(Pr,_mm256_set1_pd(1e-100));
     const double invLog10 = 1.0/std::log(10);
@@ -115,203 +115,10 @@ inline void OptReaction::SRI_F_dFdT_dFdPr
     dFdPr = _mm256_mul_pd(_mm256_mul_pd(F,dXdPr),logpsi);
 }
 
-inline double OptReaction::Troe_F
-(
-    const double T_,
-    const double Pr,
-    const unsigned int i 
-) const noexcept
-{
-    const double logPr = std::log10(std::max(Pr, small));
-    const double expTTsss = this->tmp_Exp[i+this->nSpecies];
-    const double expTTss  = this->tmp_Exp[i+this->nSpecies+this->Troe.size()];
-    const double expTTs   = this->tmp_Exp[i+this->nSpecies+this->Troe.size()*2];
-    const double Fcent =(1 - this->alpha_[i])*expTTsss + this->alpha_[i]*expTTs + expTTss;
-    const double logFcent = std::log10(std::max(Fcent, small));
-    const double c = -0.4 - 0.67*logFcent;
-    const double n = 0.75 - 1.27*logFcent;
-    const double x1 = n - 0.14*(logPr + c);
-    const double x2 = (logPr + c)/x1;
-    const double x3 = 1 + (x2*x2);
-    const double x4 = logFcent/x3;
-    return std::pow(10, x4);
-}
-
-inline void OptReaction::Troe_F
-(
-    const double Temperature,
-    const double* __restrict__ Pr,
-    double* __restrict__ F,
-    const unsigned int i 
-) const noexcept
-{
-    __m256d small = _mm256_set1_pd(2.2e-16);
-    __m256d Pr_ = _mm256_loadu_pd(&Pr[0]);
-    Pr_ = _mm256_max_pd(small,Pr_);
-    const double invLog10 = 1.0/std::log(10);
-    __m256d logPr_ = _mm256_mul_pd(vec256_logd(Pr_),_mm256_set1_pd(invLog10));
-    __m256d alpha = _mm256_loadu_pd(&this->alpha_[i]);
-    __m256d one = _mm256_set1_pd(1.0);
-    __m256d negT = _mm256_set1_pd(-Temperature);
-    __m256d negInvT = _mm256_set1_pd(-this->invT);    
-    __m256d invTsssv = _mm256_loadu_pd(&this->invTsss_[i]);
-    __m256d invTsv = _mm256_loadu_pd(&this->invTs_[i]);
-    __m256d Tssv = _mm256_loadu_pd(&this->Tss_[i]);
-    __m256d Fcent  = _mm256_mul_pd(_mm256_sub_pd(one,alpha), vec256_expd(_mm256_mul_pd(negT,invTsssv)));
-    Fcent = _mm256_fmadd_pd(alpha, vec256_expd(_mm256_mul_pd(negT,invTsv)),Fcent);
-    Fcent = _mm256_add_pd(vec256_expd(_mm256_mul_pd(negInvT,Tssv)),Fcent);
-    __m256d logFcent = _mm256_mul_pd(vec256_logd(_mm256_max_pd(Fcent,small)),_mm256_set1_pd(invLog10));
-    __m256d c = _mm256_fmadd_pd(logFcent,_mm256_set1_pd(0.67),_mm256_set1_pd(0.4));
-    __m256d n = _mm256_fmadd_pd(logFcent,_mm256_set1_pd(-1.27),_mm256_set1_pd(0.75));
-    __m256d x1 = _mm256_fmadd_pd(_mm256_sub_pd(c,logPr_),_mm256_set1_pd(0.14),n);
-    __m256d x2 = _mm256_div_pd(_mm256_sub_pd(logPr_,c),x1);
-    __m256d x3 = _mm256_fmadd_pd(x2,x2,one);
-    __m256d x4 = _mm256_div_pd(logFcent,x3);
-    __m256d F_ = vec256_powd(_mm256_set1_pd(10),x4);
-    _mm256_storeu_pd(&F[0],F_);
-}
 
 
-inline void OptReaction::Troe_F
-(
-    const double Temperature,
-    __m256d& __restrict__ Pr_,
-    __m256d& __restrict__ F,
-    const unsigned int i 
-) const noexcept
-{
-    __m256d small = _mm256_set1_pd(2.2e-16);
-    Pr_ = _mm256_max_pd(small,Pr_);
-    const double invLog10 = 1.0/std::log(10);
-    __m256d logPr_ = _mm256_mul_pd(vec256_logd(Pr_),_mm256_set1_pd(invLog10));
-    __m256d alpha = _mm256_loadu_pd(&this->alpha_[i]);
-    __m256d one = _mm256_set1_pd(1.0);
-    __m256d expTTsss = _mm256_loadu_pd(&this->tmp_Exp[i+this->nSpecies]);
-    __m256d expTTss = _mm256_loadu_pd(&this->tmp_Exp[i+this->nSpecies+this->Troe.size()]);
-    __m256d expTTs = _mm256_loadu_pd(&this->tmp_Exp[i+this->nSpecies+this->Troe.size()*2]);
-    __m256d Fcent  = _mm256_mul_pd(_mm256_sub_pd(one,alpha), expTTsss);
-    Fcent = _mm256_fmadd_pd(alpha, expTTs,Fcent);
-    Fcent = _mm256_add_pd(expTTss,Fcent);
-    __m256d logFcent = _mm256_mul_pd(vec256_logd(_mm256_max_pd(Fcent,small)),_mm256_set1_pd(invLog10));
-    __m256d c = _mm256_fmadd_pd(logFcent,_mm256_set1_pd(0.67),_mm256_set1_pd(0.4));
-    __m256d n = _mm256_fmadd_pd(logFcent,_mm256_set1_pd(-1.27),_mm256_set1_pd(0.75));
-    __m256d x1 = _mm256_fmadd_pd(_mm256_sub_pd(c,logPr_),_mm256_set1_pd(0.14),n);
-    __m256d x2 = _mm256_div_pd(_mm256_sub_pd(logPr_,c),x1);
-    __m256d x3 = _mm256_fmadd_pd(x2,x2,one);
-    __m256d x4 = _mm256_div_pd(logFcent,x3);
-    F = vec256_powd(_mm256_set1_pd(10),x4);
-}
 
 
-inline void OptReaction::Troe_F_dFdT_dFdPr
-(
-    const double Temperature,
-    const double Pr,
-    const size_t i,
-    double& __restrict__ F,
-    double& __restrict__ dFdT,
-    double& __restrict__ dFdPr
-) const noexcept
-{
-    const double logPr = std::log10(std::max(Pr, small));
-    const double expTTsss = this->tmp_Exp[i+this->nSpecies];
-    const double expTTss  = this->tmp_Exp[i+this->nSpecies+this->Troe.size()];
-    const double expTTs   = this->tmp_Exp[i+this->nSpecies+this->Troe.size()*2];
-    const double Fcent =
-        (1 - this->alpha_[i])*expTTsss
-      + this->alpha_[i]*expTTs
-      + expTTss;
-    const double logFcent = std::log10(std::max(Fcent, small));
-    const double c = -0.4 - 0.67*logFcent;
-    const double n = 0.75 - 1.27*logFcent;
-    const double x1 = n - 0.14*(logPr + c);
-    const double invx1 = 1.0/x1;
-    const double x2 = (logPr + c)*invx1;
-    const double x3 = 1 + (x2*x2);
-    const double invx3 = 1.0/x3;
-    const double x4 = logFcent*invx3;
-    F = std::pow(10, x4);
-    static const double logTen = std::log(10);
-    const double dFcentdT = - (1 - this->alpha_[i])*this->invTsss_[i]*expTTsss
-      - this->alpha_[i]*this->invTs_[i]*expTTs
-      + this->Tss_[i]*invT*invT*expTTss;
-    const double dlogFcentdT = Fcent >= small ? dFcentdT/Fcent/logTen : 0;
-    const double dcdT = -0.67*dlogFcentdT;
-    const double dndT = - 1.27*dlogFcentdT;
-    const double dx1dT = dndT - 0.14*dcdT;
-    const double dx2dT = (dcdT - x2*dx1dT)*invx1;
-    const double dx3dT = 2*x2*dx2dT;
-    const double dx4dT = (dlogFcentdT - x4*dx3dT)*invx3;
-    dFdT = logTen*F*dx4dT;
-    const double dlogPrdPr = Pr >= small ? 1/(logTen*Pr) : 0;
-    const double dx1dPr = -0.14*dlogPrdPr;
-    const double dx2dPr = (dlogPrdPr - x2*dx1dPr)*invx1;
-    const double dx3dPr = 2*x2*dx2dPr;
-    const double dx4dPr = -x4*dx3dPr*invx3;
-    dFdPr = logTen*F*dx4dPr;
-}
-
-inline void OptReaction::Troe_F_dFdT_dFdPr
-(
-    const double Temperature,
-    __m256d& __restrict__ Pr,
-    __m256d& __restrict__ F,
-    __m256d& __restrict__ dFdT,
-    __m256d& __restrict__ dFdPr,
-    const size_t i
-) const noexcept
-{
-
-    __m256d small = _mm256_set1_pd(2.2e-16);
-    __m256d cmp_result_Pr = _mm256_cmp_pd(Pr,small,_CMP_GE_OQ);
-    Pr = _mm256_add_pd(Pr,_mm256_set1_pd(1e-100));
-    
-    const double invLog10 = 1.0/std::log(10);
-    __m256d logPr_ = _mm256_mul_pd(vec256_logd(_mm256_max_pd(small,Pr)),_mm256_set1_pd(invLog10));
-    __m256d InvTsss = _mm256_loadu_pd(&this->invTsss_[i]);
-    __m256d InvTs = _mm256_loadu_pd(&this->invTs_[i]);
-    __m256d Tss = _mm256_loadu_pd(&this->Tss_[i]);
-    __m256d expTTsss = _mm256_loadu_pd(&this->tmp_Exp[i+this->nSpecies]);
-    __m256d expTTss = _mm256_loadu_pd(&this->tmp_Exp[i+this->nSpecies+this->Troe.size()]);
-    __m256d expTTs = _mm256_loadu_pd(&this->tmp_Exp[i+this->nSpecies+this->Troe.size()*2]);
-    __m256d one = _mm256_set1_pd(1.0);
-    __m256d alpha = _mm256_loadu_pd(&this->alpha_[i]);
-    __m256d Fcent  = _mm256_mul_pd(_mm256_sub_pd(one,alpha),expTTsss);
-    Fcent = _mm256_fmadd_pd(alpha,expTTs,Fcent);
-    Fcent = _mm256_add_pd(expTTss,Fcent);
-    __m256d logFcent = _mm256_mul_pd(vec256_logd(_mm256_max_pd(Fcent,small)),_mm256_set1_pd(invLog10));
-    __m256d c = _mm256_fmadd_pd(logFcent,_mm256_set1_pd(0.67),_mm256_set1_pd(0.4));
-    __m256d n = _mm256_fmadd_pd(logFcent,_mm256_set1_pd(-1.27),_mm256_set1_pd(0.75));
-    __m256d x1 = _mm256_fmadd_pd(_mm256_sub_pd(c,logPr_),_mm256_set1_pd(0.14),n);
-    __m256d invx1 = _mm256_div_pd(one,x1);
-    __m256d x2 = _mm256_mul_pd(_mm256_sub_pd(logPr_,c),invx1);
-    __m256d x3 = _mm256_fmadd_pd(x2,x2,one);
-    __m256d invx3 = _mm256_div_pd(one,x3);
-    __m256d x4 = _mm256_mul_pd(logFcent,invx3);
-    F = vec256_powd(_mm256_set1_pd(10),x4);
-    __m256d logTen = _mm256_set1_pd(std::log(10));
-    __m256d dFcentdT = _mm256_mul_pd(_mm256_mul_pd(_mm256_sub_pd(alpha,one),InvTsss),expTTsss);
-    dFcentdT = _mm256_sub_pd(dFcentdT,_mm256_mul_pd(_mm256_mul_pd(alpha,InvTs),expTTs));
-    __m256d invT2 = _mm256_set1_pd(invT*invT);
-    dFcentdT = _mm256_fmadd_pd(expTTss,_mm256_mul_pd(Tss,invT2),dFcentdT);
-    __m256d cmp = _mm256_cmp_pd(Fcent,small,_CMP_GE_OQ);
-    __m256d dlogFcentdT = _mm256_div_pd(_mm256_div_pd(dFcentdT,_mm256_max_pd(Fcent,small)),logTen);
-    dlogFcentdT = _mm256_blendv_pd(_mm256_setzero_pd(), dlogFcentdT, cmp);
-    __m256d dcdT = _mm256_mul_pd(dlogFcentdT,_mm256_set1_pd(-0.67));
-    __m256d dndT = _mm256_mul_pd(dlogFcentdT,_mm256_set1_pd(-1.27));
-    __m256d dx1dT = _mm256_fmadd_pd(dcdT,_mm256_set1_pd(-0.14),dndT);
-    __m256d dx2dT = _mm256_mul_pd(_mm256_sub_pd(dcdT,_mm256_mul_pd(x2,dx1dT)),invx1);
-    __m256d dx3dT = _mm256_mul_pd(_mm256_mul_pd(x2,dx2dT),_mm256_set1_pd(2.0));
-    __m256d dx4dT = _mm256_mul_pd(_mm256_sub_pd(dlogFcentdT,_mm256_mul_pd(x4,dx3dT)),invx3);
-    dFdT = _mm256_mul_pd(logTen,_mm256_mul_pd(F,dx4dT));
-    __m256d dlogPrdPr = _mm256_div_pd(_mm256_set1_pd(1.0),_mm256_mul_pd(Pr,logTen));
-    dlogPrdPr = _mm256_blendv_pd(_mm256_setzero_pd(), dlogPrdPr, cmp_result_Pr);
-    __m256d dx1dPr = _mm256_mul_pd(dlogPrdPr,_mm256_set1_pd(-0.14));
-    __m256d dx2dPr = _mm256_mul_pd(_mm256_sub_pd(dlogPrdPr,_mm256_mul_pd(x2,dx1dPr)),invx1);
-    __m256d dx3dPr = _mm256_mul_pd(_mm256_mul_pd(x2,dx2dPr),_mm256_set1_pd(2.0));
-    __m256d dx4dPr = _mm256_mul_pd(_mm256_mul_pd(_mm256_mul_pd(_mm256_set1_pd(-1.0),x4),dx3dPr),invx3);
-    dFdPr  = _mm256_mul_pd(_mm256_mul_pd(logTen,F),dx4dPr);
-}
 
 void OptReaction::Troe_F_3() const noexcept
 {
@@ -321,17 +128,17 @@ void OptReaction::Troe_F_3() const noexcept
     const unsigned int j1 = this->Troe[i+1];
     const unsigned int j2 = this->Troe[i+2];
 
-    const unsigned int m0 = j0 - Ikf[4] + Itbr[2];
-    const unsigned int m1 = j1 - Ikf[4] + Itbr[2];
-    const unsigned int m2 = j2 - Ikf[4] + Itbr[2];
+    const unsigned int m0 = j0 - this->Ikf[4] + this->Itbr[2];
+    const unsigned int m1 = j1 - this->Ikf[4] + this->Itbr[2];
+    const unsigned int m2 = j2 - this->Ikf[4] + this->Itbr[2];
 
-    const unsigned int k0 = j0 - Ikf[4];
-    const unsigned int k1 = j1 - Ikf[4];
-    const unsigned int k2 = j2 - Ikf[4];
+    const unsigned int k0 = j0 - this->Ikf[4];
+    const unsigned int k1 = j1 - this->Ikf[4];
+    const unsigned int k2 = j2 - this->Ikf[4];
 
-    const double Kinf0 = this->Kf_[j0+offset_kinf];
-    const double Kinf1 = this->Kf_[j1+offset_kinf];
-    const double Kinf2 = this->Kf_[j2+offset_kinf];
+    const double Kinf0 = this->Kf_[j0+this->offset_kinf];
+    const double Kinf1 = this->Kf_[j1+this->offset_kinf];
+    const double Kinf2 = this->Kf_[j2+this->offset_kinf];
 
     double M0 = this->tmp_M[m0];   
     double M1 = this->tmp_M[m1]; 
@@ -412,14 +219,14 @@ void OptReaction::Troe_F_2() const noexcept
     const unsigned int j0 = this->Troe[i+0];
     const unsigned int j1 = this->Troe[i+1];
 
-    const unsigned int m0 = j0 - Ikf[4] + Itbr[2];
-    const unsigned int m1 = j1 - Ikf[4] + Itbr[2];
+    const unsigned int m0 = j0 - this->Ikf[4] + this->Itbr[2];
+    const unsigned int m1 = j1 - this->Ikf[4] + this->Itbr[2];
 
-    const unsigned int k0 = j0 - Ikf[4];
-    const unsigned int k1 = j1 - Ikf[4];
+    const unsigned int k0 = j0 - this->Ikf[4];
+    const unsigned int k1 = j1 - this->Ikf[4];
 
-    const double Kinf0 = this->Kf_[j0+offset_kinf];
-    const double Kinf1 = this->Kf_[j1+offset_kinf];
+    const double Kinf0 = this->Kf_[j0+this->offset_kinf];
+    const double Kinf1 = this->Kf_[j1+this->offset_kinf];
 
     double M0 = this->tmp_M[m0];   
     double M1 = this->tmp_M[m1]; 
@@ -472,7 +279,7 @@ void OptReaction::Troe_F_2() const noexcept
     const double N0  = 1/(1+Pr0)*F0*K00;
     const double N1  = 1/(1+Pr1)*F1*K01;
 
-    this->Kf_[j0] = k0<this->n_Fall_Off_Reaction ? M0*N0 : N0;   
+    this->Kf_[j0] = k0<this->n_Fall_Off_Reaction ? M0*N0 : N0;
     this->Kf_[j1] = k1<this->n_Fall_Off_Reaction ? M1*N1 : N1;
 }
 
@@ -480,9 +287,9 @@ void OptReaction::Troe_F_1() const noexcept
 {
     const size_t i = this->Troe.size()-1;
     const unsigned int j0 = this->Troe[i+0];
-    const unsigned int m0 = j0 - Ikf[4] + Itbr[2];
-    const unsigned int k0 = j0 - Ikf[4];
-    const double Kinf0 = this->Kf_[j0+offset_kinf];
+    const unsigned int m0 = j0 - this->Ikf[4] + this->Itbr[2];
+    const unsigned int k0 = j0 - this->Ikf[4];
+    const double Kinf0 = this->Kf_[j0+this->offset_kinf];
     double M0 = this->tmp_M[m0];   
     const double K00 = this->Kf_[j0];
     const double Pr0 = K00*M0/Kinf0;  
@@ -507,10 +314,10 @@ void OptReaction::Troe_Jac_1() const noexcept
 {
     size_t i = this->Troe.size()-1;
     const unsigned int j = this->Troe[i];
-    const unsigned int k = j - Ikf[4];
-    const unsigned int m = j - Ikf[4] + Itbr[2];
-    const double Kinf = this->Kf_[j+offset_kinf];
-    const double dKinfdT = this->dKfdT_[j+offset_kinf];
+    const unsigned int k = j - this->Ikf[4];
+    const unsigned int m = j - this->Ikf[4] + this->Itbr[2];
+    const double Kinf = this->Kf_[j+this->offset_kinf];
+    const double dKinfdT = this->dKfdT_[j+this->offset_kinf];
     const double K0 = this->Kf_[j];
     const double M = this->tmp_M[m];
     const double Pr = K0*M/Kinf; 
@@ -568,13 +375,13 @@ void OptReaction::Troe_Jac_2() const noexcept
     size_t i = this->Troe.size()-2;
     const unsigned int j0 = this->Troe[i+0];
     const unsigned int j1 = j0 + 1;
-    const unsigned int k0 = j0 - Ikf[4];
-    const unsigned int k1 = j1 - Ikf[4];
-    const unsigned int m0 = j0 - Ikf[4] + Itbr[2];
-    const unsigned int m1 = j1 - Ikf[4] + Itbr[2];
-    __m256d Kinf = _mm256_setr_pd(Kf_[j0+offset_kinf],Kf_[j1+offset_kinf],1,1);
+    const unsigned int k0 = j0 - this->Ikf[4];
+    const unsigned int k1 = j1 - this->Ikf[4];
+    const unsigned int m0 = j0 - this->Ikf[4] + this->Itbr[2];
+    const unsigned int m1 = j1 - this->Ikf[4] + this->Itbr[2];
+    __m256d Kinf = _mm256_setr_pd(Kf_[j0+this->offset_kinf],Kf_[j1+this->offset_kinf],1,1);
     __m256d invKinf = _mm256_div_pd(_mm256_set1_pd(1.0),Kinf);
-    __m256d dKinfdT = _mm256_setr_pd(dKfdT_[j0+offset_kinf],dKfdT_[j1+offset_kinf],1,1);
+    __m256d dKinfdT = _mm256_setr_pd(dKfdT_[j0+this->offset_kinf],dKfdT_[j1+this->offset_kinf],1,1);
     __m256d K0 = _mm256_setr_pd(Kf_[j0],Kf_[j1],1,1);           
     __m256d M = _mm256_setr_pd(tmp_M[m0],tmp_M[m1],1,1);
     __m256d Pr = _mm256_mul_pd(_mm256_mul_pd(M,K0),invKinf);
@@ -660,17 +467,17 @@ void OptReaction::Troe_Jac_3() const noexcept
     const unsigned int j0 = this->Troe[i+0];
     const unsigned int j1 = j0 + 1;
     const unsigned int j2 = j1 + 1;
-    const unsigned int k0 = j0 - Ikf[4];
-    const unsigned int k1 = j1 - Ikf[4];
-    const unsigned int k2 = j2 - Ikf[4];
-    const unsigned int m0 = j0 - Ikf[4] + Itbr[2];
-    const unsigned int m1 = j1 - Ikf[4] + Itbr[2];
-    const unsigned int m2 = j2 - Ikf[4] + Itbr[2];
+    const unsigned int k0 = j0 - this->Ikf[4];
+    const unsigned int k1 = j1 - this->Ikf[4];
+    const unsigned int k2 = j2 - this->Ikf[4];
+    const unsigned int m0 = j0 - this->Ikf[4] + this->Itbr[2];
+    const unsigned int m1 = j1 - this->Ikf[4] + this->Itbr[2];
+    const unsigned int m2 = j2 - this->Ikf[4] + this->Itbr[2];
 
 
-    __m256d Kinf = _mm256_setr_pd(Kf_[j0+offset_kinf],Kf_[j1+offset_kinf],Kf_[j2+offset_kinf],1);
+    __m256d Kinf = _mm256_setr_pd(Kf_[j0+this->offset_kinf],Kf_[j1+this->offset_kinf],Kf_[j2+this->offset_kinf],1);
     __m256d invKinf = _mm256_div_pd(_mm256_set1_pd(1.0),Kinf);
-    __m256d dKinfdT = _mm256_setr_pd(dKfdT_[j0+offset_kinf],dKfdT_[j1+offset_kinf],dKfdT_[j2+offset_kinf],1);
+    __m256d dKinfdT = _mm256_setr_pd(dKfdT_[j0+this->offset_kinf],dKfdT_[j1+this->offset_kinf],dKfdT_[j2+this->offset_kinf],1);
     __m256d K0 = _mm256_setr_pd(Kf_[j0],Kf_[j1],Kf_[j2],1);           
     __m256d M = _mm256_setr_pd(tmp_M[m0],tmp_M[m1],tmp_M[m2],1);
     __m256d Pr = _mm256_mul_pd(_mm256_mul_pd(M,K0),invKinf);
