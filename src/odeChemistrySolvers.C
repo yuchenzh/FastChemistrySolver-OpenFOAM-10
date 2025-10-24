@@ -23,11 +23,8 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-#include "ode.H"
 #include "OptRosenbrock34.H"
-#include "OptRosenbrock23.H"
 #include "OptRodas34.H"
-#include "OptRodas23.H"
 #include "OptSeulex.H"
 #include "FastChemistryModel.H"
 #include "basicChemistryModel.H"
@@ -66,9 +63,7 @@ namespace Foam
 typedefThermo(sutherlandTransport,   sensibleEnthalpy,   janafThermo,    perfectGas, specie);
 defineChemistrySolver (FastChemistryModel,  sutherlandTransportsensibleEnthalpyjanafThermoperfectGasspecie)
 makeChemistrySolver(OptRosenbrock34,FastChemistryModel,sutherlandTransportsensibleEnthalpyjanafThermoperfectGasspecie);
-makeChemistrySolver(OptRosenbrock23,FastChemistryModel,sutherlandTransportsensibleEnthalpyjanafThermoperfectGasspecie);
 makeChemistrySolver(OptRodas34,     FastChemistryModel,sutherlandTransportsensibleEnthalpyjanafThermoperfectGasspecie);
-makeChemistrySolver(OptRodas23,     FastChemistryModel,sutherlandTransportsensibleEnthalpyjanafThermoperfectGasspecie);
 makeChemistrySolver(OptSeulex,     FastChemistryModel,sutherlandTransportsensibleEnthalpyjanafThermoperfectGasspecie);
 
 
