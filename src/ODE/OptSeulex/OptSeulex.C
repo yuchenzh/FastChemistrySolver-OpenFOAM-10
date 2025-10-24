@@ -41,24 +41,40 @@ Foam::OptSeulex<ChemistryModel>::OptSeulex
     absTol_(coeffsDict_.lookup<scalar>("absTol")),
     relTol_(coeffsDict_.lookup<scalar>("relTol")),
     maxSteps_(coeffsDict_.lookupOrDefault("maxSteps",10000)),
-    n_(this->nSpecie()+1),
-    cTp_(n_),
     jacRedo_(min(1e-4, relTol_)),
     nSeq_(iMaxx_),
     cpu_(iMaxx_),
     invCpu_(iMaxx_),
     coeff_(iMaxx_, iMaxx_),
     theta_(2*jacRedo_),
-    table_(kMaxx_,n_),
-    dfdx_(n_),
-    pivotIndices_(n_),
+    table_(kMaxx_,this->n_),
+    pivotIndices_(this->n_),
     dxOpt_(iMaxx_),
     temp_(iMaxx_),
-    y0_(n_),
-    ySequence_(n_),
-    scale_(n_),
-    LU(this->YTpYTpWork[2],n_)
+    y0_(nullptr),
+    ySequence_(nullptr),
+    scale_(nullptr),
+    LU(this->YTpYTpWork[2],this->n_)
 {
+
+    if (posix_memalign(reinterpret_cast<void**>(&this->y0_), 32, this->alignN*sizeof(double)))
+    {
+        throw std::bad_alloc();
+    }
+    std::memset(this->y0_, 0, this->alignN);
+
+    if (posix_memalign(reinterpret_cast<void**>(&this->ySequence_), 32, this->alignN*sizeof(double)))
+    {
+        throw std::bad_alloc();
+    }
+    std::memset(this->ySequence_, 0, this->alignN);
+
+    if (posix_memalign(reinterpret_cast<void**>(&this->scale_), 32, this->alignN*sizeof(double)))
+    {
+        throw std::bad_alloc();
+    }
+    std::memset(this->scale_, 0, this->alignN);
+
     // The CPU time factors for the major parts of the algorithm
     const scalar cpuFunc = 1, cpuJac = 5, cpuLU = 1, cpuSolve = 1;
 
@@ -83,18 +99,37 @@ Foam::OptSeulex<ChemistryModel>::OptSeulex
     {
         for (int l=0; l<k; l++)
         {
-            scalar ratio = scalar(nSeq_[k])/nSeq_[l];
-            coeff_(k, l) = 1/(ratio - 1);
+            scalar r = scalar(nSeq_[k])/nSeq_[l];
+            coeff_(k, l) = 1/(r - 1);
         }
     }
     this->logTol = -log10(relTol_ + absTol_)*0.6 + 0.5;
+
+    /*this->y0_   = this->YTpWork[5];
+    this->ySequence_         = this->YTpWork[8];
+    this->scale_         = this->YTpWork[10];
+
+    for(unsigned int i = 0; i < this->alignN ; i++)
+    {
+        this->y0_[i] = 0;
+        this->ySequence_[i] = 0;
+        this->scale_[i] = 0;
+    }*/
 }
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
 template<class ChemistryModel>
 Foam::OptSeulex<ChemistryModel>::~OptSeulex()
-{}
+{
+
+    free(this->y0_);
+    free(this->ySequence_);
+    free(this->scale_);
+    /*this->y0_ = nullptr;
+    this->ySequence_ = nullptr;
+    this->scale_ = nullptr;*/
+}
 
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
@@ -111,17 +146,14 @@ void Foam::OptSeulex<ChemistryModel>::solve
 ) const
 {
 
-    double* __restrict__ y00        = this->YTpWork[0];
-    double* __restrict__ y0         = this->YTpWork[1];
-    double* __restrict__ yTemp__    = this->YTpWork[2];
+    double* __restrict__ Phi00        = this->YTpWork[0];
+    double* __restrict__ Phi0         = this->YTpWork[1];
+    double* __restrict__ PhiTemp_    = this->YTpWork[2];
     double* __restrict__ Cp         = this->YTpWork[3];
     double* __restrict__ Ha         = this->YTpWork[4];
-    double* __restrict__ ExpGbyRT   = this->YTpWork[5];
-    double* __restrict__ dy__       = this->YTpWork[6];
-    double* __restrict__ dydx__     = this->YTpWork[7];
-    double* __restrict__ k8         = this->YTpWork[8];
+    double* __restrict__ dy_       = this->YTpWork[6];
+    double* __restrict__ dydx_     = this->YTpWork[7];
     double* __restrict__ k9         = this->YTpWork[9];
-    double* __restrict__ k10         = this->YTpWork[10];
     double* __restrict__ k11         = this->YTpWork[11];
     double* __restrict__ Jy = this->YTpYTpWork[1];
     double* __restrict__ a = this->YTpYTpWork[2];  
@@ -129,31 +161,27 @@ void Foam::OptSeulex<ChemistryModel>::solve
     // Map the composition, temperature and pressure into cTp
     for (int i=0; i<this->nSpecie(); i++)
     {
-        y00[i] = max(0, y[i]);
+        Phi00[i] = max(0, y[i]);
     }
-    y00[this->nSpecie()] = T;
+    Phi00[this->nSpecie()] = T;
 
-    for (unsigned int i=0; i<n_; i++)
+    for (label i=0; i<this->n_; i++)
     {
-        y0[i] = y00[i];
+        Phi0[i] = Phi00[i];
     }
 
     this->ODESolve
     (
-        0,
         deltaT,
         li,
         subDeltaT,
-        y0,
-        yTemp__,
+        Phi0,
+        PhiTemp_,
         Cp,
         Ha,
-        ExpGbyRT,
-        dy__,
-        dydx__,
-        k8,
+        dy_,
+        dydx_,
         k9,
-        k10,
         k11,
         Jy,
         a        
@@ -161,36 +189,71 @@ void Foam::OptSeulex<ChemistryModel>::solve
 
     for (int i=0; i<this->nSpecie(); i++)
     {
-        y[i] = max(0.0, y0[i]);
+        y[i] = max(0.0, Phi0[i]);
     }
 
-    T = y0[this->nSpecie()];
+    T = Phi0[this->nSpecie()];
+}
+
+template<class ChemistryModel>
+void Foam::OptSeulex<ChemistryModel>::solve
+(
+    const label li,
+    double T,
+    double& __restrict__ deltaT,
+    double& __restrict__ subDeltaT
+) const
+{
+
+    double* __restrict__ Phi0         = this->YTpWork[1];
+    double* __restrict__ PhiTemp    = this->YTpWork[2];
+    double* __restrict__ Cp         = this->YTpWork[3];
+    double* __restrict__ Ha         = this->YTpWork[4];
+    double* __restrict__ dy_       = this->YTpWork[6];
+    double* __restrict__ dydx_     = this->YTpWork[7];
+    double* __restrict__ k9         = this->YTpWork[9];
+    double* __restrict__ k11         = this->YTpWork[11];
+    double* __restrict__ Jac = this->YTpYTpWork[1];
+    double* __restrict__ a = this->YTpYTpWork[2];  
+     
+    this->ODESolve
+    (
+        deltaT,
+        li,
+        subDeltaT,
+        Phi0,
+        PhiTemp,
+        Cp,
+        Ha,
+        dy_,
+        dydx_,
+        k9,
+        k11,
+        Jac,
+        a        
+    );
 }
 
 template<class ChemistryModel>
 void Foam::OptSeulex<ChemistryModel>::ODESolve
 (
-    const scalar xStart,
     const scalar xEnd,
     const label li,
     scalar& dxTry,
-    double* __restrict__ y0,
-    double* __restrict__ yTemp__,
+    double* __restrict__ Phi0,
+    double* __restrict__ PhiTemp_,
     double* __restrict__ Cp,
     double* __restrict__ Ha,
-    double* __restrict__ ExpGbyRT,
-    double* __restrict__ dy__,
-    double* __restrict__ dydx__,
-    double* __restrict__ k8,
+    double* __restrict__ dy_,
+    double* __restrict__ dydx_,
     double* __restrict__ k9,
-    double* __restrict__ k10,
     double* __restrict__ k11,
     double* __restrict__ Jy,
     double* __restrict__ a
 ) const
 {
     stepState step(dxTry);
-    scalar x = xStart;
+    scalar x = 0;
 
     for (label nStep=0; nStep<maxSteps_; nStep++)
     {
@@ -200,7 +263,7 @@ void Foam::OptSeulex<ChemistryModel>::ODESolve
         step.reject = false;
 
         // Check if this is a truncated step and set dxTry to integrate to xEnd
-        if ((x + step.dxTry - xEnd)*(x + step.dxTry - xStart) > 0)
+        if ((x + step.dxTry - xEnd)*(x + step.dxTry) > 0)
         {
             step.last = true;
             step.dxTry = xEnd - x;
@@ -212,23 +275,20 @@ void Foam::OptSeulex<ChemistryModel>::ODESolve
             x, 
             li, 
             step, 
-            y0,
-            yTemp__,
+            Phi0,
+            PhiTemp_,
             Cp,
             Ha,
-            ExpGbyRT,
-            dy__,
-            dydx__,
-            k8,
+            dy_,
+            dydx_,
             k9,
-            k10,
             k11,
             Jy,
             a
         );
 
         // Check if reached xEnd
-        if ((x - xEnd)*(xEnd - xStart) >= 0)
+        if ((x - xEnd)*(xEnd) >= 0)
         {
             if (nStep > 0 && step.last)
             {
@@ -251,9 +311,9 @@ void Foam::OptSeulex<ChemistryModel>::ODESolve
 
     FatalErrorInFunction
         << "Integration steps greater than maximum " << maxSteps_ << nl
-        << "    xStart = " << xStart << ", xEnd = " << xEnd
+        << ", xEnd = " << xEnd
         << ", x = " << x << ", dxDid = " << step.dxDid << nl
-        << "    y = " << y0
+        << "    y = " << Phi0
         << exit(FatalError);
 
 }
@@ -264,16 +324,13 @@ void Foam::OptSeulex<ChemistryModel>::SeulexSolve
     scalar& x,
     const label li,
     stepState& step,
-    double* __restrict__ y,
-    double* __restrict__ yTemp__,
+    double* __restrict__ Phi,
+    double* __restrict__ PhiTemp_,
     double* __restrict__ Cp,
     double* __restrict__ Ha,
-    double* __restrict__ ExpGbyRT,
-    double* __restrict__ dy__,
-    double* __restrict__ dydx__,
-    double* __restrict__ k8,
+    double* __restrict__ dy_,
+    double* __restrict__ dydx_,
     double* __restrict__ k9,
-    double* __restrict__ k10,
     double* __restrict__ k11,    
     double* __restrict__ Jy,
     double* __restrict__ a  
@@ -282,9 +339,9 @@ void Foam::OptSeulex<ChemistryModel>::SeulexSolve
 
     temp_[0] = great;
     scalar dx = step.dxTry;
-    for(unsigned int i = 0; i < n_;i++)
+    for(label i = 0; i < this->n_;i++)
     {
-        y0_[i] = y[i];
+        y0_[i] = Phi[i];
     }
     dxOpt_[0] = mag(0.1*dx);
 
@@ -304,16 +361,16 @@ void Foam::OptSeulex<ChemistryModel>::SeulexSolve
     //{
     //    scale_[i] = absTol_ + relTol_*mag(y[i]);
     //}
-    for(unsigned int i = 0; i<this->n_;i++)
+    for(label i = 0; i<this->n_;i++)
     {
-        k11[i] = absTol_ + relTol_*mag(y[i]);
+        k11[i] = absTol_ + relTol_*mag(Phi[i]);
     }
 
     bool jacUpdated = false;
 
     if (theta_ > jacRedo_)
     {
-        this->jacobian(x, y, li, k9, Jy);
+        this->jacobian(x, li, Phi,  k9, Jy);
         jacUpdated = true;
     }
 
@@ -339,15 +396,11 @@ void Foam::OptSeulex<ChemistryModel>::SeulexSolve
                 dx, 
                 k, 
                 ySequence_, 
-                yTemp__,
+                PhiTemp_,
                 Cp,
                 Ha,
-                ExpGbyRT,
-                dy__,
-                dydx__,
-                k8,
-                k9,
-                k10,
+                dy_,
+                dydx_,
                 k11,
                 Jy,
                 a    
@@ -362,16 +415,16 @@ void Foam::OptSeulex<ChemistryModel>::SeulexSolve
 
             if (k == 0)
             {
-                for(unsigned int i = 0; i < n_;i++)
+                for(label i = 0; i < this->n_;i++)
                 {
-                    y[i] = ySequence_[i];
+                    Phi[i] = ySequence_[i];
                 }
 
             }
             else
             {
                 
-                forAll(ySequence_, i)
+                for(label i = 0; i < this->n_;i++)                
                 {
                     table_[k-1][i] = ySequence_[i];
                 }
@@ -379,19 +432,19 @@ void Foam::OptSeulex<ChemistryModel>::SeulexSolve
 
             if (k != 0)
             {
-                extrapolate(k, table_, y);
+                extrapolate(k, table_, Phi);
                 scalar err = 0;
                 //forAll(scale_, i) 
                 //{
                 //    scale_[i] = absTol_ + relTol_*mag(y0_[i]);
                 //    err += sqr((y[i] - table_(0, i))/scale_[i]);
                 //}
-                for(unsigned int i = 0; i<this->n_;i++)
+                for(label i = 0; i<this->n_;i++)
                 {
                     k11[i] = absTol_ + relTol_*mag(y0_[i]);
-                    err += sqr((y[i] - table_(0, i))/k11[i]);                    
+                    err += sqr((Phi[i] - table_(0, i))/k11[i]);                    
                 }
-                err = sqrt(err/n_);
+                err = sqrt(err/this->n_);
                 if (err > 1/small || (k > 1 && err >= errOld))
                 {
                     step.reject = true;
@@ -485,7 +538,7 @@ void Foam::OptSeulex<ChemistryModel>::SeulexSolve
                 theta_ = 2.0*jacRedo_;
                 if (theta_ > jacRedo_ && !jacUpdated)
                 {
-                    this->jacobian(x, y, li, k9, Jy);
+                    this->jacobian(x, li, Phi,  k9, Jy);
                     jacUpdated = true;
                 }
             }
@@ -513,7 +566,7 @@ void Foam::OptSeulex<ChemistryModel>::SeulexSolve
         {
             kopt = min(k + 1, kMaxx_ - 1);
         }
-    }
+    } 
     else
     {
         kopt = k - 1;
@@ -562,22 +615,18 @@ template<class ChemistryModel>
 bool Foam::OptSeulex<ChemistryModel>::seul
 (
     const scalar x0,
-    scalarField& __restrict__ y0,
+    double* __restrict__ y0,
     const label li,
     const scalar dxTot,
     const label k,
-    scalarField& __restrict__ ySequence,
-    double* __restrict__ yTemp__,
+    double* __restrict__ ySequence,
+    double* __restrict__ yTemp_,
     double* __restrict__ Cp,
     double* __restrict__ Ha,
-    double* __restrict__ ExpGbyRT,
-    double* __restrict__ dy__,
-    double* __restrict__ dydx__,
-    double* __restrict__ k8,
-    double* __restrict__ k9,
-    double* __restrict__ k10,
+    double* __restrict__ dy_,
+    double* __restrict__ dydx_,
     double* __restrict__ k11,     
-    double* __restrict__ Jy,
+    double* __restrict__ Jac,
     double* __restrict__ a        
 ) const
 {
@@ -587,14 +636,14 @@ bool Foam::OptSeulex<ChemistryModel>::seul
     scalar invdx = nSteps/dxTot;
 
     {
-        const unsigned int  NN = n_*n_;
+        const unsigned int  NN = this->alignN*this->n_;
         unsigned int remain = NN%16;
         for(unsigned int i = 0 ; i<NN-remain;i=i+16)
         {
-            __m256d Av0 = _mm256_loadu_pd(&Jy[i+0]);
-            __m256d Av1 = _mm256_loadu_pd(&Jy[i+4]);
-            __m256d Av2 = _mm256_loadu_pd(&Jy[i+8]);
-            __m256d Av3 = _mm256_loadu_pd(&Jy[i+12]);
+            __m256d Av0 = _mm256_loadu_pd(&Jac[i+0]);
+            __m256d Av1 = _mm256_loadu_pd(&Jac[i+4]);
+            __m256d Av2 = _mm256_loadu_pd(&Jac[i+8]);
+            __m256d Av3 = _mm256_loadu_pd(&Jac[i+12]);
 
             _mm256_storeu_pd(&a[i+0],-Av0);
             _mm256_storeu_pd(&a[i+4],-Av1);
@@ -603,12 +652,12 @@ bool Foam::OptSeulex<ChemistryModel>::seul
         }
         for(unsigned int i = NN-remain; i < NN;i++)
         {
-            a[i] = -Jy[i];
+            a[i] = -Jac[i];
         }
     }
-    for (unsigned int i=0; i<n_; i++)
+    for (label i=0; i<this->n_; i++)
     {
-        a[i*n_+i] += invdx;
+        a[i*this->alignN+i] += invdx;
     }
 
     {
@@ -619,21 +668,21 @@ bool Foam::OptSeulex<ChemistryModel>::seul
 
     scalar xnew = x0 + dx;
 
-    this->derivatives(xnew, li, y0.data(), dy__, Cp, Ha, ExpGbyRT);
+    this->derivatives(xnew, li, y0, dy_, Cp, Ha);
 
     {
-        LU.xSolve(dy__);
+        LU.xSolve(dy_);
     }
 
-    for(unsigned int i = 0; i < n_;i++) 
+    for(label i = 0; i < this->n_;i++) 
     {
-        yTemp__[i] = y0[i];
+        yTemp_[i] = y0[i];
     }    
     for (unsigned int nn=1; nn<nSteps; nn++)
     {
-        for(unsigned int i = 0; i < n_;i++) 
+        for(label i = 0; i < this->n_;i++) 
         {
-            yTemp__[i] += dy__[i];
+            yTemp_[i] += dy_[i];
         }
 
 
@@ -642,22 +691,22 @@ bool Foam::OptSeulex<ChemistryModel>::seul
         if (nn == 1 && k<=1)
         {
             scalar dy1 = 0;
-            for (unsigned int i=0; i<n_; i++) 
+            for (label i=0; i<this->n_; i++) 
             {
-                dy1 += sqr(dy__[i]/k11[i]);
+                dy1 += sqr(dy_[i]/k11[i]);
             }
             dy1 = sqrt(dy1);
 
             //odes_.derivatives(x0 + dx, yTemp_, li, dydx_);
-            this->derivatives(x0 + dx, li, yTemp__, dydx__, Cp, Ha, ExpGbyRT);
+            this->derivatives(x0 + dx, li, yTemp_, dydx_, Cp, Ha);
 
-            for (unsigned int i=0; i<n_; i++) 
+            for (label i=0; i<this->n_; i++) 
             {
-                dy__[i] = dydx__[i] - dy__[i]*invdx;
+                dy_[i] = dydx_[i] - dy_[i]*invdx;
             }
 
             
-            LU.xSolve(dy__);
+            LU.xSolve(dy_);
             
             
 
@@ -670,14 +719,14 @@ bool Foam::OptSeulex<ChemistryModel>::seul
 
             scalar dy2 = 0.0;
 
-	        for (unsigned int i=0; i<n_; i++)
+	        for (label i=0; i<this->n_; i++)
 	        {
-	            if (mag(dy__[i]) > sqrt(vGreat) )
+	            if (mag(dy_[i]) > sqrt(vGreat) )
                 { 
                     dy2 = vGreat; 
                     break;
                 }
-		        dy2 += sqr(dy__[i]/k11[i]);
+		        dy2 += sqr(dy_[i]/k11[i]);
 	        }
 
 	    	dy2 = sqrt(dy2);
@@ -689,16 +738,16 @@ bool Foam::OptSeulex<ChemistryModel>::seul
         }
 
 
-        this->derivatives(xnew, li, yTemp__, dy__, Cp, Ha, ExpGbyRT);
+        this->derivatives(xnew, li, yTemp_, dy_, Cp, Ha);
 
         {
-            LU.xSolve(dy__);
+            LU.xSolve(dy_);
         }
     }
 
-    for (unsigned int i=0; i<n_; i++) 
+    for (label i=0; i<this->n_; i++) 
     {
-        ySequence[i] = yTemp__[i] + dy__[i];
+        ySequence[i] = yTemp_[i] + dy_[i];
     }
 
     return true;
@@ -717,14 +766,14 @@ void Foam::OptSeulex<ChemistryModel>::extrapolate
 {
     for (int j=k-1; j>0; j--)
     {
-        for (unsigned int i=0; i<n_; i++)
+        for (label i=0; i<this->n_; i++)
         {
             table[j-1][i] =
                 table(j, i) + coeff_(k, j)*(table(j, i) - table[j-1][i]);
         }
     }
 
-    for (unsigned int i=0; i<n_; i++) 
+    for (label i=0; i<this->n_; i++) 
     {
         y[i] = table(0, i) + coeff_(k, 0)*(table(0, i) - y[i]);
     }

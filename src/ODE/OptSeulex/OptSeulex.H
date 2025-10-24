@@ -111,24 +111,6 @@ class OptSeulex
         //- The maximum number of sub-steps allowed for the integration step
         const label maxSteps_;
 
-        //- Size of the ODE system
-        const unsigned int n_;
-
-    // Adaptive Solver
-
-        //- Step-size adjustment controls
-        constexpr static const scalar safeScale_ =     0.9;
-        constexpr static const scalar alphaInc_  =     0.2;
-        constexpr static const scalar alphaDec_ =     0.25;
-        constexpr static const scalar minScale_ =      0.2;
-        constexpr static const scalar maxScale_ =      10;
-
-        constexpr static const scalar ratio = std::pow(maxScale_/safeScale_, -1.0/alphaInc_);
-        constexpr static const scalar safeMaxScale = safeScale_*maxScale_;
-
-        //- Field encapsulating the composition, temperature and pressure
-        mutable scalarField cTp_;
-
 
     // Seulex
 
@@ -160,12 +142,17 @@ class OptSeulex
             mutable label kTarg_;
             mutable scalarRectangularMatrix table_;
 
-            mutable scalarField dfdx_;
             mutable labelList pivotIndices_;
 
             // Fields space for "solve" function
+
+
             mutable scalarField dxOpt_, temp_;
-            mutable scalarField y0_, ySequence_, scale_;
+            //mutable scalarField y0_, ySequence_, scale_;
+            
+            mutable double* y0_;
+            mutable double* ySequence_;
+            mutable double* scale_;
 
             // Fields used in "seul" function
             //mutable scalarField dy_, yTemp_, dydx_;
@@ -204,24 +191,28 @@ public:
             scalar& __restrict__ subDeltaT
         ) const;
 
+
+        virtual void solve
+        (
+            const label li,
+            double T,
+            double& __restrict__ deltaT,
+            double& __restrict__ subDeltaT
+        ) const;
     // ODE solver
 
         void ODESolve
         (
-            const scalar xStart,
             const scalar xEnd,
             const label li,
             scalar& dxTry,
             double* __restrict__ y0,
-            double* __restrict__ yTemp__,
+            double* __restrict__ yTemp_,
             double* __restrict__ Cp,
             double* __restrict__ Ha,
-            double* __restrict__ ExpGbyRT,
-            double* __restrict__ dy__,
-            double* __restrict__ dydx__,
-            double* __restrict__ k8,
+            double* __restrict__ dy_,
+            double* __restrict__ dydx_,
             double* __restrict__ k9,
-            double* __restrict__ k10,
             double* __restrict__ k11,
             double* __restrict__ Jy,
             double* __restrict__ a
@@ -236,12 +227,9 @@ public:
             double* __restrict__ yTemp__,
             double* __restrict__ Cp,
             double* __restrict__ Ha,
-            double* __restrict__ ExpGbyRT,
-            double* __restrict__ dy__,
-            double* __restrict__ dydx__,
-            double* __restrict__ k8,
+            double* __restrict__ dy_,
+            double* __restrict__ dydx_,
             double* __restrict__ k9,
-            double* __restrict__ k10,
             double* __restrict__ k11,            
             double* __restrict__ Jy,
             double* __restrict__ a            
@@ -253,20 +241,16 @@ public:
         bool seul
         (
             const scalar x0,
-            scalarField& __restrict__ y0,
+            double* __restrict__ y0,
             const label li,
             const scalar dxTot,
             const label k,
-            scalarField& __restrict__ y,
-            double* __restrict__ yTemp__,
+            double* __restrict__ y,
+            double* __restrict__ yTemp_,
             double* __restrict__ Cp,
             double* __restrict__ Ha,
-            double* __restrict__ ExpGbyRT,
-            double* __restrict__ dy__,
-            double* __restrict__ dydx__,
-            double* __restrict__ k8,
-            double* __restrict__ k9,
-            double* __restrict__ k10,
+            double* __restrict__ dy_,
+            double* __restrict__ dydx_,
             double* __restrict__ k11,             
             double* __restrict__ Jy,
             double* __restrict__ a                
