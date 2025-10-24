@@ -1,13 +1,63 @@
 # Chemistry Model 
 
-    An improved chemistry integration module for OpenFOAM-10.  
-    It accelerates the chemistry solver but does not yet support tabulation or reduction methods. Only support ideal gas
+An improved chemistry integration module for OpenFOAM-10 to accelerates the chemistry solver.
+
+# Key Advantages
+
+- **Mathematically consistent with OpenFOAM-10’s original formulation** —  
+
+- **No third-party dependencies** —  
+
+- **Significant performance improvement** —  
+
+# Limitations
+
+This optimized combustion solver is still under development.  
+Some functions and reaction types may not work as expected:  
+1. Doesn't support tabulation method or reduction method to further accelerating computation.  
+2. Only support ideal gas  
+3. Support the following reaction type:
+    irreversibleArrhenius  
+    irreversibleArrheniusLindemannChemicallyActivated  
+    irreversibleArrheniusLindemannFallOff  
+    irreversibleArrheniusSRIChemicallyActivated  
+    irreversibleArrheniusSRIFallOff  
+    irreversibleArrheniusTroeChemicallyActivated  
+    irreversibleArrheniusTroeFallOff  
+    irreversibleThirdBodyArrhenius  
+    nonEquilibriumReversibleArrhenius  
+    nonEquilibriumReversibleThirdBodyArrhenius  
+    reversibleArrhenius  
+    reversibleArrheniusLindemannChemicallyActivated  
+    reversibleArrheniusLindemannFallOff  
+    reversibleArrheniusSRIChemicallyActivated  
+    reversibleArrheniusSRIFallOff  
+    reversibleArrheniusTroeChemicallyActivated  
+    reversibleArrheniusTroeFallOff  
+    reversibleThirdBodyArrhenius  
+4. Unsupport the following reaction type:
+    irreversibleJanev  
+    irreversibleLandauTeller  
+    irreversibleLangmuirHinshelwood  
+    irreversiblePowerSeries  
+    nonEquilibriumReversibleLandauTeller  
+    reversibleJanev  
+    reversibleLandauTeller  
+    reversibleLangmuirHinshelwood  
+    reversiblePowerSeries  
+    irreversibleFluxLimitedLangmuirHinshelwood  
+    irreversibleSurfaceArrhenius
+   
+# Numerical consistency
+This code includes the analytical derivatives for Falloff and ChemicallyActivated reactions,  
+which are not considered by default during compilation in OpenFOAM-10.  
+For reference, see the ChemicallyActivatedReactionRateI.H and FallOffReactionRateI.H files in OpenFOAM-10.  
 
 # Prerequisites
 
- 1. cmake >= 3.10.2
- 2. gcc >= 5.4.0
- 3. OpenFOAM-10
+1. cmake >= 3.10.2  
+2. gcc >= 5.4.0  
+3. OpenFOAM-10  
 
 # Compilation
 
@@ -15,43 +65,38 @@
     If your glibc version is ≥ 2.22, you can build with the OpenFOAM wmake command,
     since glibc-2.22 provides vectorized mathematical functions. The installation steps are:
 
- 1. Enter the `src` folder.
+     1. Enter the `src` folder.
 
- 2. In `Macro.H`, set `USE_LOCALFILE_  false`. 
+     2. In `Macro.H`, set `USE_LOCALFILE_  false`. 
 
- 3. Source your OpenFOAM environment.  
+     3. Source your OpenFOAM environment.  
 
- 4. Add the C++ flags `-mavx2 -mfma -lmvec` to your compilation rules.
-    *before*：`c++OPT = -O3`
-    *after* ：`c++OPT = -O3 -mavx2 -mfma -lmvec`
-    For example, if you are using Gcc to compile the model, find $WM_DIR/rules/linux64Gcc/c++Opt, 
-
- 5. Run the `wmake`
+     4. Run the `wmake`
 
 **Option 2: using Cmake and make**
 
- 1. Enter the `src` folder.
+     1. Enter the `src` folder.
 
- 2. Source your OpenFOAM environment.
+     2. Source your OpenFOAM environment.
 
- 3. Create a `build` directory. 
-    `mkdir build`
+     3. Create a `build` directory. 
+        `mkdir build`
 
- 4. Enter the `build` folder. 
-    `cd build`
+     4. Enter the `build` folder. 
+        `cd build`
 
- 5. Run CMake.
-    `cmake ..`
+     5. Run CMake.
+        `cmake ..`
 
- 6. Build with Make.
-    `make`  
+     6. Build with Make.
+        `make`  
 
- 7. Copy the dynamic library `libFastChemistryModel.so` to the folder `$FOAM_USER_LIBBIN`
+     7. Copy the dynamic library `libFastChemistryModel.so` to the folder `$FOAM_USER_LIBBIN`
 
- *  Note: When building on a compute cluster, CMake may pick the system’s GCC by default, 
-    which can be too old (e.g., GCC 4.8.5 lacks C++14 support) and cause compilation failures.
-    In that case, load a newer GCC and run:
-   `cmake -DCMAKE_C_COMPILER=$(which gcc) -DCMAKE_CXX_COMPILER=$(which g++) ..`
+     *  Note: When building on a compute cluster, CMake may pick the system’s GCC by default, 
+        which can be too old (e.g., GCC 4.8.5 lacks C++14 support) and cause compilation failures.
+        In that case, load a newer GCC and run:
+       `cmake -DCMAKE_C_COMPILER=$(which gcc) -DCMAKE_CXX_COMPILER=$(which g++) ..`
 
 **Vectorized math function**
 
@@ -65,63 +110,64 @@
 
 **controlDict**
 
-libs
-(
-    "libFastChemistryModel.so"
-);
+    libs
+    (
+        "libFastChemistryModel.so"
+    );
 
 
 **chemistryProperties**
 
-chemistryType
-{
-    solver          OptRodas34;
-                    //OptRosenbrock34;
-                    //OptSeulex;
-    method          FastChemistryModel;
-}
+    chemistryType
+    {
+        solver          OptRodas34;
+        //solver          OptRosenbrock34;
+        //solver          OptSeulex;
+        method          FastChemistryModel;
+    }
 
 
-// The option is consistent with OpenFOAM-10. The Jacobian matrix of OF-10 is based on the 
-// mass fraction (Jy). The matrix dCdY is used to convert the Jc to Jy. If fast option is used, 
-// the non-diagonal element dCdY is zero, and the converting will be fast. However, this may 
-// influence the converging rate, especially the torelance is tight.
-jacobian    exact;
-            //fast;
+    // The option is consistent with OpenFOAM-10. The Jacobian matrix of OF-10 is based on the 
+    // mass fraction (Jy). The matrix dCdY is used to convert the Jc to Jy. If fast option is used, 
+    // the non-diagonal element dCdY is zero, and the converting will be fast. However, this may 
+    // influence the converging rate, especially the torelance is tight.
+    // The convergence rate can be evaluated through 0D ignition problems
+    jacobian    exact;
+    //jacobian    fast;
 
-// switch on the chemistry
-chemistry       on;
-                //off
+    // switch on the chemistry
+    chemistry       on;
+    //chemistry       off;
 
-// Solving chemistry for cells with temperature larger than Treact.
-Treact          0;
+    // Solving chemistry for cells with temperature larger than Treact.
+    Treact          0;
+    //Treact          300;
 
-// Initial sub step of ODE system.
-initialChemicalTimeStep 1e-07;
+    // Initial sub step of ODE system.
+    initialChemicalTimeStep 1e-07;
 
-// Turn on the load balancing when parallel computing is performed.
-balance         on;
-                //off
-// After a specified number of iterations, the DLB algorithm re evaluates the load.
-// Default value is 1.
-Iter            1;
+    // Turn on the load balancing when parallel computing is performed.
+    balance         on;
 
-// Only chemistry integration time large than Tave*DLBthreshold is identified as a high load process
-// Tave is the average time of chemical reaction integration for all processes.
-DLBthreshold    1.0;
+    // After a specified number of iterations, the DLB algorithm re evaluates the load.
+    // Default value is 1.
+    Iter            1;
+
+    // Only chemistry integration time large than Tave*DLBthreshold is identified as a high load process
+    // Tave is the average time of chemical reaction integration for all processes.
+    DLBthreshold    1.0;
 
 
-OptRodas34Coeffs
-{
-    absTol          1e-8;
-    relTol          1e-4;
-}
-OptSeulexCoeffs
-{
-
-    absTol          1e-8;
-    relTol          1e-4;
-}
+    OptRodas34Coeffs
+    {
+        absTol          1e-8;
+        relTol          1e-4;
+    }
+    OptSeulexCoeffs
+    {
+        absTol          1e-8;
+        relTol          1e-4;
+    }
 
 # PLOG reaction
 
@@ -140,6 +186,7 @@ OptSeulexCoeffs
     For reaction with two reactant. A=A*1e-3. For reaction with three reactant. A=A*1e-6
 
 **CHEMKIN**
+
     !Stagni, A. et al. React. Chem. Eng. doi:10.1039/C9RE00429G(2020).
     HNO=H+NO        .18259e+21  -3.008  47880.0 
     PLOG /  0.100   .20121e+20  -3.021  47792.0   /
@@ -160,6 +207,7 @@ OptSeulexCoeffs
     PLOG /  100.0   .1270E+11   0.910   5968.0    /
 
 **OpenFOAM**
+
     un-named-reaction-176
     {
         type            reversibleArrheniusPLOG;
@@ -209,9 +257,9 @@ OptSeulexCoeffs
 
 ## Contact
 
-Maintainer: Zixin Chi  
-Email: chizixin@buaa.edu.cn  
-Issues: Please use the [GitHub Issues] page for bug reports and questions.
+    Maintainer: Zixin Chi  
+    Email: chizixin@buaa.edu.cn  
+    Issues: Please use the [GitHub Issues] page for bug reports and questions.
 
 
 
