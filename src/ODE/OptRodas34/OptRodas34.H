@@ -94,11 +94,7 @@ class OptRodas34
 
         //- The maximum number of sub-steps allowed for the integration step
         const label maxSteps_;
-
-        //- Size of the ODE system
-        const label n_;
-
-
+        
     // Adaptive Solver
 
         //- Step-size adjustment controls
@@ -108,7 +104,8 @@ class OptRodas34
         constexpr static const scalar minScale_ =      0.2;
         constexpr static const scalar maxScale_ =      10;
 
-        constexpr static const scalar ratio = std::pow(maxScale_/safeScale_, -1.0/alphaInc_);
+        //constexpr static const scalar ratio = std::pow(maxScale_/safeScale_, -1.0/alphaInc_);
+        constexpr static const scalar ratio = 5.904900000E-06;
         constexpr static const scalar safeMaxScale = safeScale_*maxScale_;
 
     // Rodas34
@@ -148,22 +145,11 @@ class OptRodas34
         constexpr static const scalar gamma = 0.25;
         constexpr static const scalar Invgamma= 1.0/gamma;
 
-    // Adaptive Solver
-
-        //- Field encapsulating the composition, temperature and pressure
-        mutable scalarField cTp_;
 
 
     // Rodas34
 
-        mutable labelList pivotIndices_;
-
-
         mutable LUsolver LU;
-
-        //mutable int Jac=0;
-        //mutable int Lu=0;
-        //mutable int RR=0;
 
 public:
 
@@ -195,16 +181,23 @@ public:
             scalar& __restrict__ subDeltaT
         ) const;
 
+        virtual void solve
+        (
+            const label li,
+            double T,
+            double& __restrict__ deltaT,
+            double& __restrict__ subDeltaT
+        ) const;        
+
     // ODE solver
 
         void ODESolve
         (
-            const scalar xStart,
             const scalar xEnd,
             const label li,
             scalar& dxTry,
-            double* __restrict__ y0,
-            double* __restrict__ yTemp,
+            double* __restrict__ Phi0,
+            double* __restrict__ PhiTemp,
             double* __restrict__ k1,
             double* __restrict__ k2,
             double* __restrict__ k3,
@@ -225,8 +218,8 @@ public:
             scalar& __restrict__ x,
             const label li,
             scalar& __restrict__ dxTry,
-            double* __restrict__ y0,
-            double* __restrict__ yTemp,
+            double* __restrict__ Phi0,
+            double* __restrict__ PhiTemp,
             double* __restrict__ k1,
             double* __restrict__ k2,
             double* __restrict__ k3,
@@ -245,8 +238,8 @@ public:
             const label li,
             const scalar dx,
             const scalar invdx,
-            double* __restrict__ y0,
-            double* __restrict__ yTemp,
+            double* __restrict__ Phi0,
+            double* __restrict__ PhiTemp,
             double* __restrict__ k1,
             double* __restrict__ k2,
             double* __restrict__ k3,
@@ -263,8 +256,8 @@ public:
         //- Return the normalised scalar error
         inline scalar normaliseError
         (
-            const double* __restrict__ y0,
-            const double* __restrict__ y,
+            const double* __restrict__ Phi0,
+            const double* __restrict__ Phi,
             const double* __restrict__ err
         )const;         
 };
