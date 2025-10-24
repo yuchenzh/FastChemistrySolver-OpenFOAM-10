@@ -25,8 +25,7 @@ Class
     Foam::dataBlock
 
 Description
-    A data block to store the chemistry variable of a cell. 
-    it stores time step
+
 
 SourceFiles
     dataBlock.C
@@ -69,23 +68,14 @@ public:
         //- a list of species mass fraction for chemistry reaction
         List<scalar> Y_;
 
-        //- a list of chemical reaction rate [kg/m3-s]
-        List<scalar> RR_;
-
         //- temperature [K]
         scalar T;
 
         //- absolute pressure [Pa]
         scalar p;
 
-        //- density[kg/m3]
-        scalar rho;
-
         //- CPU time for chemistry integration
         int64_t CPUtime;
-
-        //- the data that belonging to processor No.X
-        label myProcNo;
 
         //- cell id
         label celli;
@@ -128,12 +118,9 @@ inline bool operator==(const dataBlock& data1, const dataBlock& data2)
 {
     return
         data1.Y_ == data2.Y_ &&
-        data1.RR_ == data2.RR_ &&
         data1.T == data2.T &&
         data1.p == data2.p &&
-        data1.rho == data2.rho &&
         data1.CPUtime == data2.CPUtime &&
-        data1.myProcNo == data2.myProcNo &&
         data1.celli == data2.celli &&
         data1.deltaT == data2.deltaT &&
         data1.deltaTChem_ == data2.deltaTChem_;

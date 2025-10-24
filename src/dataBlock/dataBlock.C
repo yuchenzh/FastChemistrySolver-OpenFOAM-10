@@ -37,12 +37,9 @@ SourceFiles
 
 Foam::dataBlock::dataBlock(label& nSpecies_):
 Y_(nSpecies_),
-RR_(nSpecies_),
 T(300.0),
 p(101325),
-rho(1.17),
 CPUtime(0),
-myProcNo(-1),
 celli(-1),
 deltaT(0),
 deltaTChem_(0)
@@ -51,13 +48,10 @@ deltaTChem_(0)
 Foam::dataBlock::dataBlock(Istream& is)
 {
     this->Y_.clear();
-    this->RR_.clear();
     is >> this->Y_;
-    is >> this->RR_;
     is >> this->T;
     is >> this->p;
     is >> this->CPUtime;
-    is >> this->myProcNo;
     is >> this->celli;
     is >> this->deltaT;
     is >> this->deltaTChem_;
@@ -68,12 +62,9 @@ Foam::dataBlock::dataBlock(Istream& is)
 Foam::Istream& Foam::operator >>(Istream& is, dataBlock& data)
 {
     is >> data.Y_;
-    is >> data.RR_;
     is >> data.T;
     is >> data.p;
-    is >> data.rho;
     is >> data.CPUtime;
-    is >> data.myProcNo;
     is >> data.celli;
     is >> data.deltaT;
     is >> data.deltaTChem_;
@@ -83,12 +74,9 @@ Foam::Istream& Foam::operator >>(Istream& is, dataBlock& data)
 Foam::Ostream& Foam::operator <<(Ostream& os, const dataBlock& data)
 {
     os << data.Y_;
-    os << data.RR_;
     os << data.T;
     os << data.p;
-    os << data.rho;
     os << data.CPUtime;
-    os << data.myProcNo;
     os << data.celli;
     os << data.deltaT;
     os << data.deltaTChem_;
