@@ -36,7 +36,7 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
             scalar T = T0vf[celli];
             if(T>this->Treact )
             {
-                //scalar p = p0vf[celli];
+                scalar p = p0vf[celli];
                 const scalar rho0 = rho0vf[celli];
 
                 // Load thermophysical variable into Phi vector
@@ -59,7 +59,7 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
                 while (timeLeft > small)
                 {
                     scalar dt = timeLeft;
-                    solve(celli, T, dt, deltaTChem_[celli]);
+                    solve(celli, p, dt, deltaTChem_[celli]);
                     timeLeft -= dt;
                 }
 
@@ -385,7 +385,7 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
             if(T>this->Treact)
             {
                 const scalar rho0 = rho0vf[celli];
-                //scalar p = p0vf[celli];
+                scalar p = p0vf[celli];
 
                 // Load thermophysical variable into Phi vector
                 for (label i=0; i<nSpecie_; i++)
@@ -408,7 +408,7 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
                 {
                     scalar dt = timeLeft;
                     {
-                        solve(celli, T, dt, deltaTChem_[celli]);
+                        solve(celli, p, dt, deltaTChem_[celli]);
                     }
                     timeLeft -= dt;
                 }
@@ -449,12 +449,13 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
 
                 if(T>this->Treact)
                 {
-                    //scalar p = cellsToReceive[A][celli].p;
+                    scalar p = cellsToReceive[A][celli].p;
 
                     // Load thermophysical variable into Phi vector
                     for (label i=0; i<nSpecie_; i++)
                     {
-                        Phi00[i] = Yvf_[i].oldTime()[celli];
+                        //Phi00[i] = Yvf_[i].oldTime()[celli];
+                        Phi00[i] = cellsToReceive[A][celli].Y_[i];
                     }
                     for (label i=0; i<nSpecie_; i++)
                     {
@@ -473,7 +474,7 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
                     {
                         scalar dt = timeLeft;
 
-                        solve(celli, T, dt, deltaTChem_[celli]);
+                        solve(celli, p, dt, deltaTChem_[celli]);
 
                         timeLeft -= dt;
                     }
@@ -508,7 +509,7 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
             if(T>this->Treact)
             {
                 const scalar rho0 = rho0vf[celli];
-                //scalar p = p0vf[celli];
+                scalar p = p0vf[celli];
 
                 // Load thermophysical variable into Phi vector
                 for (label i=0; i<nSpecie_; i++)
@@ -531,7 +532,7 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
                 {
                     scalar dt = timeLeft;
                     {
-                        solve(celli, T, dt, deltaTChem_[celli]);                        
+                        solve(celli, p, dt, deltaTChem_[celli]);                        
                     }
                     timeLeft -= dt;
                 }

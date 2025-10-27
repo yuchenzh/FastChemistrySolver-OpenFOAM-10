@@ -195,7 +195,7 @@ public:
         virtual void solve
         (
             const label li,
-            double T,
+            double p,
             double& __restrict__ deltaT,
             double& __restrict__ subDeltaT
         ) const;
@@ -206,6 +206,7 @@ public:
             const scalar xEnd,
             const label li,
             scalar& dxTry,
+            const double p,
             double* __restrict__ y0,
             double* __restrict__ yTemp_,
             double* __restrict__ Cp,
@@ -223,6 +224,7 @@ public:
             scalar& x,
             const label li,
             stepState& step,
+            const double p,
             double* __restrict__ y,
             double* __restrict__ yTemp__,
             double* __restrict__ Cp,
@@ -245,6 +247,7 @@ public:
             const label li,
             const scalar dxTot,
             const label k,
+            const double p,
             double* __restrict__ y,
             double* __restrict__ yTemp_,
             double* __restrict__ Cp,

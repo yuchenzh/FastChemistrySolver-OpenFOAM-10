@@ -41,9 +41,6 @@ Foam::OptRodas34<ChemistryModel>::OptRodas34
     absTol_(coeffsDict_.lookup<scalar>("absTol")),
     relTol_(coeffsDict_.lookup<scalar>("relTol")),
     maxSteps_(coeffsDict_.lookupOrDefault("maxSteps",10000)),
-    //n_(this->nSpecie()+1),
-    //cTp_(n_),
-    //pivotIndices_(n_),
     LU(this->YTpYTpWork[1],this->n_)
 {}
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
@@ -63,63 +60,13 @@ void Foam::OptRodas34<ChemistryModel>::solve
     scalar& __restrict__ deltaT,
     scalar& __restrict__ subDeltaT
 ) const
-{
+{}
 
-    double* __restrict__ Phi00 = this->YTpWork[0];
-    double* __restrict__ Phi0  = this->YTpWork[1];
-
-
-    for (int i=0; i<this->nSpecie(); i++)
-    {
-        Phi00[i] = max(0, Phi[i]);
-    }
-    Phi00[this->nSpecie()] = T;
-
-    for (label i=0; i<this->n_; i++)
-    {
-        Phi0[i] = Phi00[i];
-    }
-    double* __restrict__ PhiTemp = this->YTpWork[2];
-    double* __restrict__ k1 = this->YTpWork[3];
-    double* __restrict__ k2 = this->YTpWork[4];
-    double* __restrict__ k3 = this->YTpWork[5];
-    double* __restrict__ k4 = this->YTpWork[6];
-    double* __restrict__ k5 = this->YTpWork[7];
-    double* __restrict__ dy = this->YTpWork[8];
-    double* __restrict__ err = this->YTpWork[9];
-    double* __restrict__ dydx = this->YTpWork[10];
-    double* __restrict__ dfdx = this->YTpWork[11];
-    double* __restrict__ Jac = this->YTpYTpWork[1];
-
-    this->ODESolve
-    (       
-        deltaT,         
-        li,             
-        subDeltaT,      
-        Phi0,              
-        PhiTemp,
-        k1,
-        k2,
-        k3,
-        k4,
-        k5,
-        dy,
-        err,
-        dydx,
-        dfdx,
-        Jac        
-    );
-
-    for (int i=0; i<this->nSpecie(); i++)
-    {
-        Phi[i] = max(0.0, Phi0[i]);
-    }
-}
 template<class ChemistryModel>
 void Foam::OptRodas34<ChemistryModel>::solve
 (
     const label li,
-    double T,
+    const double p,
     double& __restrict__ deltaT,
     double& __restrict__ subDeltaT
 ) const
@@ -142,7 +89,8 @@ void Foam::OptRodas34<ChemistryModel>::solve
     (       
         deltaT,         
         li,             
-        subDeltaT,      
+        subDeltaT,
+        p,
         Phi0,              
         PhiTemp,
         k1,
@@ -164,6 +112,7 @@ void Foam::OptRodas34<ChemistryModel>::ODESolve
     const scalar xEnd,
     const label li,
     scalar& dxTry,
+    const double p,
     double* __restrict__ Phi0,
     double* __restrict__ PhiTemp,    
     double* __restrict__ k1,
@@ -200,7 +149,8 @@ void Foam::OptRodas34<ChemistryModel>::ODESolve
         (
             x,              
             li,             
-            step.dxTry,     
+            step.dxTry,
+            p,  
             Phi0,             
             PhiTemp,
             k1,
@@ -241,6 +191,7 @@ void Foam::OptRodas34<ChemistryModel>::adaptiveSolve
     scalar& __restrict__ x,
     const label li,
     scalar& __restrict__ dxTry,
+    const double p,
     double* __restrict__ Phi0,
     double* __restrict__ PhiTemp,
     double* __restrict__ k1,
@@ -269,6 +220,7 @@ void Foam::OptRodas34<ChemistryModel>::adaptiveSolve
         li,
         dx,
         invdx,
+        p,
         Phi0,
         PhiTemp,
         k1,
@@ -295,6 +247,7 @@ void Foam::OptRodas34<ChemistryModel>::adaptiveSolve
             li,
             dx,
             invdx,
+            p,
             Phi0,
             PhiTemp,
             k1,
@@ -332,6 +285,7 @@ Foam::scalar Foam::OptRodas34<ChemistryModel>::Rodas34Solve
     const label li,
     const scalar dx,
     const scalar invdx,
+    const double p,
     double* __restrict__ Phi0,    
     double* __restrict__ PhiTemp,
     double* __restrict__ k1,
@@ -347,7 +301,7 @@ Foam::scalar Foam::OptRodas34<ChemistryModel>::Rodas34Solve
 ) const
 {
 
-    this->jacobian(x0, li, Phi0,  dfdx, Jac);
+    this->jacobian(x0, li, p, Phi0,  dfdx, Jac);
 
     {
         const unsigned int NN = this->alignN*this->n_;
@@ -401,7 +355,7 @@ Foam::scalar Foam::OptRodas34<ChemistryModel>::Rodas34Solve
         }
     }
 
-    this->derivatives(x0 + c2*dx, li, PhiTemp, dydx, k2, k3);
+    this->derivatives(x0 + c2*dx, li, p, PhiTemp, dydx, k2, k3);
 
     {
         double dxd2 = dx*d2;
@@ -435,7 +389,7 @@ Foam::scalar Foam::OptRodas34<ChemistryModel>::Rodas34Solve
         }
     }
 
-    this->derivatives(x0 + c3*dx, li, PhiTemp, dydx, k3, k4);
+    this->derivatives(x0 + c3*dx, li, p, PhiTemp, dydx, k3, k4);
 
     {
         double dxd3 = dx*d3;
@@ -476,7 +430,7 @@ Foam::scalar Foam::OptRodas34<ChemistryModel>::Rodas34Solve
         }
     }
 
-    this->derivatives(x0 + c4*dx, li, PhiTemp, dydx, k4, k5);
+    this->derivatives(x0 + c4*dx, li, p, PhiTemp, dydx, k4, k5);
 
     {
         double dxd4 = dx*d4;
@@ -530,7 +484,7 @@ Foam::scalar Foam::OptRodas34<ChemistryModel>::Rodas34Solve
     }
 
 
-    this->derivatives(x0 + dx, li, PhiTemp, dydx, k5, err);
+    this->derivatives(x0 + dx, li, p, PhiTemp, dydx, k5, err);
 
     {
         double c51invdx = c51*invdx;
@@ -574,7 +528,7 @@ Foam::scalar Foam::OptRodas34<ChemistryModel>::Rodas34Solve
         }
     }
 
-    this->derivatives(x0 + dx, li, PhiTemp, dydx, err, dfdx);
+    this->derivatives(x0 + dx, li, p, PhiTemp, dydx, err, dfdx);
   
 
     {

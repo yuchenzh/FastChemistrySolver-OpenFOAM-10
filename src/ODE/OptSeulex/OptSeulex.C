@@ -144,62 +144,13 @@ void Foam::OptSeulex<ChemistryModel>::solve
     scalar& __restrict__ deltaT,
     scalar& __restrict__ subDeltaT
 ) const
-{
-
-    double* __restrict__ Phi00        = this->YTpWork[0];
-    double* __restrict__ Phi0         = this->YTpWork[1];
-    double* __restrict__ PhiTemp_    = this->YTpWork[2];
-    double* __restrict__ Cp         = this->YTpWork[3];
-    double* __restrict__ Ha         = this->YTpWork[4];
-    double* __restrict__ dy_       = this->YTpWork[6];
-    double* __restrict__ dydx_     = this->YTpWork[7];
-    double* __restrict__ k9         = this->YTpWork[9];
-    double* __restrict__ k11         = this->YTpWork[11];
-    double* __restrict__ Jy = this->YTpYTpWork[1];
-    double* __restrict__ a = this->YTpYTpWork[2];  
-     
-    // Map the composition, temperature and pressure into cTp
-    for (int i=0; i<this->nSpecie(); i++)
-    {
-        Phi00[i] = max(0, y[i]);
-    }
-    Phi00[this->nSpecie()] = T;
-
-    for (label i=0; i<this->n_; i++)
-    {
-        Phi0[i] = Phi00[i];
-    }
-
-    this->ODESolve
-    (
-        deltaT,
-        li,
-        subDeltaT,
-        Phi0,
-        PhiTemp_,
-        Cp,
-        Ha,
-        dy_,
-        dydx_,
-        k9,
-        k11,
-        Jy,
-        a        
-    );
-
-    for (int i=0; i<this->nSpecie(); i++)
-    {
-        y[i] = max(0.0, Phi0[i]);
-    }
-
-    T = Phi0[this->nSpecie()];
-}
+{}
 
 template<class ChemistryModel>
 void Foam::OptSeulex<ChemistryModel>::solve
 (
     const label li,
-    double T,
+    double p,
     double& __restrict__ deltaT,
     double& __restrict__ subDeltaT
 ) const
@@ -221,6 +172,7 @@ void Foam::OptSeulex<ChemistryModel>::solve
         deltaT,
         li,
         subDeltaT,
+        p,
         Phi0,
         PhiTemp,
         Cp,
@@ -240,6 +192,7 @@ void Foam::OptSeulex<ChemistryModel>::ODESolve
     const scalar xEnd,
     const label li,
     scalar& dxTry,
+    const double p,
     double* __restrict__ Phi0,
     double* __restrict__ PhiTemp_,
     double* __restrict__ Cp,
@@ -274,7 +227,8 @@ void Foam::OptSeulex<ChemistryModel>::ODESolve
         (
             x, 
             li, 
-            step, 
+            step,
+            p,
             Phi0,
             PhiTemp_,
             Cp,
@@ -324,6 +278,7 @@ void Foam::OptSeulex<ChemistryModel>::SeulexSolve
     scalar& x,
     const label li,
     stepState& step,
+    const double p,
     double* __restrict__ Phi,
     double* __restrict__ PhiTemp_,
     double* __restrict__ Cp,
@@ -370,7 +325,7 @@ void Foam::OptSeulex<ChemistryModel>::SeulexSolve
 
     if (theta_ > jacRedo_)
     {
-        this->jacobian(x, li, Phi,  k9, Jy);
+        this->jacobian(x, li, p, Phi,  k9, Jy);
         jacUpdated = true;
     }
 
@@ -394,7 +349,8 @@ void Foam::OptSeulex<ChemistryModel>::SeulexSolve
                 y0_, 
                 li, 
                 dx, 
-                k, 
+                k,
+                p,
                 ySequence_, 
                 PhiTemp_,
                 Cp,
@@ -538,7 +494,7 @@ void Foam::OptSeulex<ChemistryModel>::SeulexSolve
                 theta_ = 2.0*jacRedo_;
                 if (theta_ > jacRedo_ && !jacUpdated)
                 {
-                    this->jacobian(x, li, Phi,  k9, Jy);
+                    this->jacobian(x, li, p, Phi,  k9, Jy);
                     jacUpdated = true;
                 }
             }
@@ -619,6 +575,7 @@ bool Foam::OptSeulex<ChemistryModel>::seul
     const label li,
     const scalar dxTot,
     const label k,
+    const double p,
     double* __restrict__ ySequence,
     double* __restrict__ yTemp_,
     double* __restrict__ Cp,
@@ -668,7 +625,7 @@ bool Foam::OptSeulex<ChemistryModel>::seul
 
     scalar xnew = x0 + dx;
 
-    this->derivatives(xnew, li, y0, dy_, Cp, Ha);
+    this->derivatives(xnew, li, p, y0, dy_, Cp, Ha);
 
     {
         LU.xSolve(dy_);
@@ -698,7 +655,7 @@ bool Foam::OptSeulex<ChemistryModel>::seul
             dy1 = sqrt(dy1);
 
             //odes_.derivatives(x0 + dx, yTemp_, li, dydx_);
-            this->derivatives(x0 + dx, li, yTemp_, dydx_, Cp, Ha);
+            this->derivatives(x0 + dx, li, p, yTemp_, dydx_, Cp, Ha);
 
             for (label i=0; i<this->n_; i++) 
             {
@@ -738,7 +695,7 @@ bool Foam::OptSeulex<ChemistryModel>::seul
         }
 
 
-        this->derivatives(xnew, li, yTemp_, dy_, Cp, Ha);
+        this->derivatives(xnew, li, p, yTemp_, dy_, Cp, Ha);
 
         {
             LU.xSolve(dy_);

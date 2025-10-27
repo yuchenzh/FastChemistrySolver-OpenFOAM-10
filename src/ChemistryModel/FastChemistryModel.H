@@ -236,6 +236,7 @@ public:
             (
                 const scalar t,
                 const label li,
+                const double p,
                 double* __restrict__ Phi,
                 double* __restrict__ dPhidt,
                 double* __restrict__ Cp,
@@ -245,7 +246,8 @@ public:
             virtual void jacobian
             (
                 const scalar t,
-                const label li,                
+                const label li,
+                const double p,
                 double* __restrict__ Phi,
                 double* __restrict__ dPhidt,
                 double* __restrict__ Jac

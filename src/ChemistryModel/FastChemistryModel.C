@@ -180,6 +180,7 @@ void Foam::FastChemistryModel<ThermoType>::derivatives
 (
     const scalar t,
     const label li,
+    const double p,
     double* __restrict__ Phi,    
     double* __restrict__ dPhidt,
     double* __restrict__ Cp,
@@ -190,8 +191,8 @@ void Foam::FastChemistryModel<ThermoType>::derivatives
     int remain = nSpecie_%4;
 
     const double T = Phi[nSpecie_];
-    const volScalarField& p0vf = this->thermo().p().oldTime();
-    double p = p0vf[li];
+    //const volScalarField& p0vf = this->thermo().p().oldTime();
+    //double p = p0vf[li];
     
     for (int i=0; i<this->nSpecie(); i++)
     {
@@ -260,7 +261,8 @@ template<class ThermoType>
 void Foam::FastChemistryModel<ThermoType>::jacobian
 (
     const scalar t,
-    const label li,    
+    const label li,
+    const double p,
     double* __restrict__ Phi,
     double* __restrict__ dPhidt,
     double* __restrict__ Jac
@@ -273,8 +275,8 @@ void Foam::FastChemistryModel<ThermoType>::jacobian
     }
 
     const double T = Phi[this->nSpecie()];
-    const volScalarField& p0vf = this->thermo().p().oldTime();
-    double p = p0vf[li];
+    //const volScalarField& p0vf = this->thermo().p().oldTime();
+    //double p = p0vf[li];
         
     double* __restrict__ ddNdtByVdcT = YTpYTpWork[0];
 

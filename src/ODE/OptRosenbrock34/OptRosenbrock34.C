@@ -64,61 +64,13 @@ void Foam::OptRosenbrock34<ChemistryModel>::solve
     scalar& __restrict__ deltaT,
     scalar& __restrict__ subDeltaT
 ) const
-{
-    double* __restrict__ Phi00    = this->YTpWork[0];
-    double* __restrict__ Phi0     = this->YTpWork[1];
-    double* __restrict__ PhiTemp  = this->YTpWork[2];
-    double* __restrict__ k1     = this->YTpWork[3];
-    double* __restrict__ k2     = this->YTpWork[4];
-    double* __restrict__ k3     = this->YTpWork[5];
-    double* __restrict__ k4     = this->YTpWork[6];
-    double* __restrict__ err    = this->YTpWork[7];
-    double* __restrict__ dydx   = this->YTpWork[8];
-    double* __restrict__ dfdx   = this->YTpWork[9];
-    double* __restrict__ Jac     = this->YTpYTpWork[1];
-
-    // Map the composition, temperature and pressure into cTp
-    for (int i=0; i<this->nSpecie(); i++)
-    {
-        Phi00[i] = max(0, Phi[i]);
-    }
-    Phi00[this->nSpecie()] = T;
-
-
-    for (label i=0; i<this->n_; i++)
-    {
-        Phi0[i] = Phi00[i];
-    }
-
-
-    this->ODESolve
-    (
-        deltaT,         // end( CFD flow time step)
-        li,             // celli
-        subDeltaT,      // sub time step
-        Phi0,           // initial vector
-        PhiTemp,        // predicted vector
-        k1,
-        k2,
-        k3,
-        k4,
-        err,
-        dydx,
-        dfdx,
-        Jac    
-    );
-
-    for (int i=0; i<this->nSpecie(); i++)
-    {
-        Phi[i] = max(0.0, Phi0[i]);
-    }
-}
+{}
 
 template<class ChemistryModel>
 void Foam::OptRosenbrock34<ChemistryModel>::solve
 (
     const label li,
-    double T,
+    double p,
     double& __restrict__ deltaT,
     double& __restrict__ subDeltaT
 ) const
@@ -139,6 +91,7 @@ void Foam::OptRosenbrock34<ChemistryModel>::solve
         deltaT,         // end( CFD flow time step)
         li,             // celli
         subDeltaT,      // sub time step
+        p,
         Phi0,           // initial vector
         PhiTemp,        // predicted vector
         k1,
@@ -158,6 +111,7 @@ void Foam::OptRosenbrock34<ChemistryModel>::ODESolve
     const scalar xEnd,
     const label li,
     scalar& dxTry,
+    const double p,
     double* __restrict__ Phi0,
     double* __restrict__ PhiTemp,
     double* __restrict__ k1,
@@ -195,6 +149,7 @@ void Foam::OptRosenbrock34<ChemistryModel>::ODESolve
             x,              //start
             li,             //celli
             step.dxTry,     //sub time step
+            p,
             Phi0,
             PhiTemp,
             k1,
@@ -231,6 +186,7 @@ void Foam::OptRosenbrock34<ChemistryModel>::adaptiveSolve
     scalar& __restrict__ x,
     const label li,
     scalar& __restrict__ dxTry,
+    const double p,
     double* __restrict__ Phi0,
     double* __restrict__ PhiTemp,
     double* __restrict__ k1,
@@ -256,6 +212,7 @@ void Foam::OptRosenbrock34<ChemistryModel>::adaptiveSolve
             li,
             dx,
             invdx,
+            p,
             Phi0,
             PhiTemp,
             k1,
@@ -280,6 +237,7 @@ void Foam::OptRosenbrock34<ChemistryModel>::adaptiveSolve
             li,
             dx,
             invdx,
+            p,
             Phi0,
             PhiTemp,
             k1,
@@ -312,6 +270,7 @@ Foam::scalar Foam::OptRosenbrock34<ChemistryModel>::Rosenbrock34Solve
     const label li,
     const scalar dx,
     const scalar invdx,
+    const double p,
     double* __restrict__ Phi0,
     double* __restrict__ PhiTemp,
     double* __restrict__ k1,
@@ -325,7 +284,7 @@ Foam::scalar Foam::OptRosenbrock34<ChemistryModel>::Rosenbrock34Solve
 ) const
 {
     
-    this->jacobian(x0, li, Phi0,  dfdx, Jac);
+    this->jacobian(x0, li, p, Phi0,  dfdx, Jac);
     
     {
         const unsigned int NN = this->alignN*this->n_;
@@ -383,7 +342,7 @@ Foam::scalar Foam::OptRosenbrock34<ChemistryModel>::Rosenbrock34Solve
 
 
 
-    this->derivatives(x0 + c2*dx,li,PhiTemp,dydx,k3,k4);
+    this->derivatives(x0 + c2*dx, li, p, PhiTemp, dydx, k3, k4);
 
     {
         double dxd2 = dx*d2;
@@ -419,7 +378,7 @@ Foam::scalar Foam::OptRosenbrock34<ChemistryModel>::Rosenbrock34Solve
         }   
     }
 
-    this->derivatives(x0 + c2*dx, li, PhiTemp, dydx, k3, k4);
+    this->derivatives(x0 + c2*dx, li, p, PhiTemp, dydx, k3, k4);
     
     {
         double dxd3 = dx*d3;
