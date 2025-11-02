@@ -25,44 +25,44 @@ License
 
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
 
-template<class ThermoType>
+
 inline label
-Foam::FastChemistryModel<ThermoType>::nSpecie() const
+Foam::FastChemistryModel::nSpecie() const
 {
     return nSpecie_;
 }
 
-template<class ThermoType>
+
 inline Foam::PtrList<Foam::volScalarField>&
-Foam::FastChemistryModel<ThermoType>::RR()
+Foam::FastChemistryModel::RR()
 {
     return RR_;
 }
 
-template<class ThermoType>
-inline Foam::label Foam::FastChemistryModel<ThermoType>::nReaction() const
+
+inline Foam::label Foam::FastChemistryModel::nReaction() const
 {
     return reaction.n_Reactions;
 }
 
-template<class ThermoType>
-inline OptReaction& Foam::FastChemistryModel<ThermoType>::getReaction() const
+
+inline OptReaction& Foam::FastChemistryModel::getReaction() const
 {
     return reaction;
 }
 
 
-template<class ThermoType>
+
 inline const Foam::DimensionedField<Foam::scalar, Foam::volMesh>&
-Foam::FastChemistryModel<ThermoType>::RR(const label i) const
+Foam::FastChemistryModel::RR(const label i) const
 {
     return RR_[i].internalField();
 }
 
 
-template<class ThermoType>
-Foam::DimensionedField<Foam::scalar, Foam::volMesh>&
-Foam::FastChemistryModel<ThermoType>::RR(const label i)
+
+inline Foam::DimensionedField<Foam::scalar, Foam::volMesh>&
+Foam::FastChemistryModel::RR(const label i)
 {
     return RR_[i].ref();
 }

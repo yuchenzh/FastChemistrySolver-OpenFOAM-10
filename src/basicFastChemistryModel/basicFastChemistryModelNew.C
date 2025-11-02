@@ -97,8 +97,9 @@ Foam::autoPtr<Foam::basicFastChemistryModel> Foam::basicFastChemistryModel::New
 
     Info<< "Selecting chemistry solver " << chemistryTypeDictNew << endl;
 
+    // FastChemistryModel is no longer templated, so we only need solver<method>
     const word chemSolverNameName =
-        solverName + '<' + methodName + '<' + thermo.thermoName() + ">>";
+        solverName + '<' + methodName + '>';
 
     Info<< "Looking for: " << chemSolverNameName << endl;
     Info<< "Available solvers in table: " << thermoConstructorTablePtr_->sortedToc() << endl;

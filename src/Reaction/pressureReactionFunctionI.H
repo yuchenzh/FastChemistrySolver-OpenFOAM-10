@@ -120,7 +120,7 @@ inline void OptReaction::SRI_F_dFdT_dFdPr
 
 
 
-void OptReaction::Troe_F_3() const noexcept
+inline void OptReaction::Troe_F_3() const noexcept
 {
     const size_t i = this->Troe.size()-3;
 
@@ -212,7 +212,7 @@ void OptReaction::Troe_F_3() const noexcept
     this->Kf_[j1] = k1<this->n_Fall_Off_Reaction ? M1*N1 : N1;
     this->Kf_[j2] = k2<this->n_Fall_Off_Reaction ? M2*N2 : N2;   
 }
-void OptReaction::Troe_F_2() const noexcept
+inline void OptReaction::Troe_F_2() const noexcept
 {
     const size_t i = this->Troe.size()-2;
     
@@ -283,7 +283,7 @@ void OptReaction::Troe_F_2() const noexcept
     this->Kf_[j1] = k1<this->n_Fall_Off_Reaction ? M1*N1 : N1;
 }
 
-void OptReaction::Troe_F_1() const noexcept
+inline void OptReaction::Troe_F_1() const noexcept
 {
     const size_t i = this->Troe.size()-1;
     const unsigned int j0 = this->Troe[i+0];
@@ -310,7 +310,7 @@ void OptReaction::Troe_F_1() const noexcept
     this->Kf_[j0] = k0<this->n_Fall_Off_Reaction ? M0*N0 : N0;   
 
 }
-void OptReaction::Troe_Jac_1() const noexcept
+inline void OptReaction::Troe_Jac_1() const noexcept
 {
     size_t i = this->Troe.size()-1;
     const unsigned int j = this->Troe[i];
@@ -370,7 +370,7 @@ void OptReaction::Troe_Jac_1() const noexcept
     this->Kf_[j] = k<this->n_Fall_Off_Reaction ? M*N : N;   
 }
 
-void OptReaction::Troe_Jac_2() const noexcept
+inline void OptReaction::Troe_Jac_2() const noexcept
 {
     size_t i = this->Troe.size()-2;
     const unsigned int j0 = this->Troe[i+0];
@@ -460,7 +460,7 @@ void OptReaction::Troe_Jac_2() const noexcept
     this->Kf_[j1] = get_elem1(KF);
 }
 
-void OptReaction::Troe_Jac_3() const noexcept
+inline void OptReaction::Troe_Jac_3() const noexcept
 {
 
     size_t i = this->Troe.size() - 3;

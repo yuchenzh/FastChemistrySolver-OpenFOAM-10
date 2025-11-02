@@ -23,15 +23,13 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-
 #include "FastChemistryModel.H"
 #include "basicFastChemistryModel.H"
 #include "OptReaction.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-template<class ThermoType>
-Foam::FastChemistryModel<ThermoType>::FastChemistryModel
+Foam::FastChemistryModel::FastChemistryModel
 (
     const fluidReactionThermo& thermo
 )
@@ -155,11 +153,9 @@ Foam::FastChemistryModel<ThermoType>::FastChemistryModel
     reaction.alignN = this->alignN;
 }
 
-
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
-template<class ThermoType>
-Foam::FastChemistryModel<ThermoType>::~FastChemistryModel()
+Foam::FastChemistryModel::~FastChemistryModel()
 {
     free(this->buffer);
 
@@ -173,10 +169,9 @@ Foam::FastChemistryModel<ThermoType>::~FastChemistryModel()
     }
 }
 
-
 // * * * * * * * * * * * * * * * Member Functions  * * * * * * * * * * * * * //
-template<class ThermoType>
-void Foam::FastChemistryModel<ThermoType>::derivatives
+
+void Foam::FastChemistryModel::derivatives
 (
     const scalar t,
     const label li,
@@ -257,8 +252,7 @@ void Foam::FastChemistryModel<ThermoType>::derivatives
     dPhidt[nSpecie_] = dTdt;
 }
 
-template<class ThermoType>
-void Foam::FastChemistryModel<ThermoType>::jacobian
+void Foam::FastChemistryModel::jacobian
 (
     const scalar t,
     const label li,
@@ -370,12 +364,8 @@ void Foam::FastChemistryModel<ThermoType>::jacobian
     }
 }
 
-
-
-
-template<class ThermoType>
 Foam::tmp<Foam::volScalarField>
-Foam::FastChemistryModel<ThermoType>::tc() const
+Foam::FastChemistryModel::tc() const
 {
     tmp<volScalarField> ttc
     (
@@ -441,94 +431,10 @@ Foam::FastChemistryModel<ThermoType>::tc() const
     }
     ttc.ref().correctBoundaryConditions();
     return ttc;
-    /*tmp<volScalarField> ttc
-    (
-        volScalarField::New
-        (
-            "tc",
-            this->mesh(),
-            dimensionedScalar(dimTime, small),
-            extrapolatedCalculatedFvPatchScalarField::typeName
-        )
-    );
-    scalarField& tc = ttc.ref();
-
-    tmp<volScalarField> trho(this->thermo().rho());
-    const scalarField& rho = trho();
-
-    const scalarField& T = this->thermo().T();
-    const scalarField& p = this->thermo().p();
-
-    if (this->chemistry_)
-    {
-        reactionEvaluationScope scope(*this);
-
-        forAll(rho, celli)
-        {
-            const scalar rhoi = rho[celli];
-            const scalar Ti = T[celli];
-            const scalar pi = p[celli];
-
-            for (label i=0; i<nSpecie_; i++)
-            {
-                c_[i] = rhoi*Yvf_[i][celli]/specieThermos_[i].W();
-            }
-
-            // A reaction's rate scale is calculated as it's molar
-            // production rate divided by the total number of moles in the
-            // system.
-            //
-            // The system rate scale is the average of the reactions' rate
-            // scales weighted by the reactions' molar production rates. This
-            // weighting ensures that dominant reactions provide the largest
-            // contribution to the system rate scale.
-            //
-            // The system time scale is then the reciprocal of the system rate
-            // scale.
-            //
-            // Contributions from forward and reverse reaction rates are
-            // handled independently and identically so that reversible
-            // reactions produce the same result as the equivalent pair of
-            // irreversible reactions.
-
-            scalar sumW = 0, sumWRateByCTot = 0;
-            forAll(reactions_, i)
-            {
-                const Reaction<ThermoType>& R = reactions_[i];
-                scalar omegaf, omegar;
-                R.omega(pi, Ti, c_, celli, omegaf, omegar);
-
-                scalar wf = 0;
-                forAll(R.rhs(), s)
-                {
-                    wf += R.rhs()[s].stoichCoeff*omegaf;
-                }
-                sumW += wf;
-                sumWRateByCTot += sqr(wf);
-
-                scalar wr = 0;
-                forAll(R.lhs(), s)
-                {
-                    wr += R.lhs()[s].stoichCoeff*omegar;
-                }
-                sumW += wr;
-                sumWRateByCTot += sqr(wr);
-            }
-
-            tc[celli] =
-                sumWRateByCTot == 0 ? vGreat : sumW/sumWRateByCTot*sum(c_);
-        }
-    }
-
-    ttc.ref().correctBoundaryConditions();
-
-    return ttc;*/
 }
 
-
-template<class ThermoType>
 Foam::tmp<Foam::volScalarField>
-Foam::FastChemistryModel<ThermoType>::Qdot() const
+Foam::FastChemistryModel::Qdot() const
 {
     tmp<volScalarField> tQdot
     (
@@ -559,10 +465,8 @@ Foam::FastChemistryModel<ThermoType>::Qdot() const
     return tQdot;
 }
 
-
-template<class ThermoType>
 Foam::tmp<Foam::DimensionedField<Foam::scalar, Foam::volMesh>>
-Foam::FastChemistryModel<ThermoType>::calculateRR
+Foam::FastChemistryModel::calculateRR
 (
     const label ri,
     const label si
@@ -585,9 +489,7 @@ Foam::FastChemistryModel<ThermoType>::calculateRR
     return tRR;
 }
 
-
-template<class ThermoType>
-void Foam::FastChemistryModel<ThermoType>::calculate()
+void Foam::FastChemistryModel::calculate()
 {
 
     if (!this->chemistry_)
@@ -626,11 +528,10 @@ void Foam::FastChemistryModel<ThermoType>::calculate()
     return;
 }
 
-
 #include "FastChemistryModel_transientSolve.H"
 #include "FastChemistryModel_localEulerSolve.H"
-template<class ThermoType>
-void Foam::FastChemistryModel<ThermoType>::exchange
+
+void Foam::FastChemistryModel::exchange
 (
     const UList<DynamicList<char>>& sendBufs,
     const List<std::streamsize>& recvSizes,
@@ -664,7 +565,6 @@ void Foam::FastChemistryModel<ThermoType>::exchange
         forAll(recvSizes, proci)
         {
             std::streamsize nRecv = recvSizes[proci]; 
-
 
             if (proci != Pstream::myProcNo(comm) && nRecv > 0)
             {
@@ -717,8 +617,8 @@ void Foam::FastChemistryModel<ThermoType>::exchange
 
     recvBufs[Pstream::myProcNo(comm)] = sendBufs[Pstream::myProcNo(comm)];
 }
-template<class ThermoType>
-void Foam::FastChemistryModel<ThermoType>::exchangeSizes
+
+void Foam::FastChemistryModel::exchangeSizes
 (
     const UList<DynamicList<char>>& sendBufs,
     labelList& recvSizes,
@@ -744,8 +644,7 @@ void Foam::FastChemistryModel<ThermoType>::exchangeSizes
     Pout<<"exchangesize: recvSizes: "<<recvSizes<<endl;
 }
 
-template<class ThermoType>
-Foam::scalarField Foam::FastChemistryModel<ThermoType>::getRRGivenYTP
+Foam::scalarField Foam::FastChemistryModel::getRRGivenYTP
 (
     const scalarField& Y,
     const scalar T,
@@ -801,6 +700,5 @@ Foam::scalarField Foam::FastChemistryModel<ThermoType>::getRRGivenYTP
  
     return RR;
 }
-
 
 // ************************************************************************* //

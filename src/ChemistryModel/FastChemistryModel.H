@@ -51,7 +51,6 @@ namespace Foam
                      Class FastChemistryModel Declaration
 \*---------------------------------------------------------------------------*/
 
-template<class ThermoType>
 class FastChemistryModel
 :
     public basicFastChemistryModel
@@ -298,12 +297,6 @@ public:
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 #include "FastChemistryModelI.H"
-
-// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
-
-#ifdef NoRepository
-    #include "FastChemistryModel.C"
-#endif
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

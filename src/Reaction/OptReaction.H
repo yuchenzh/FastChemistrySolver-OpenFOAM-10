@@ -51,6 +51,8 @@ SourceFiles
 #include "scalarField.H"
 #include "fvCFD.H"
 #include "HashTable.H"
+#include "hashedWordList.H"
+#include "dictionary.H"
 #include "Macro.H"
 #include "vec_math_avx2.H"
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -1086,16 +1088,6 @@ public:
 #include "pressureReactionFunctionI.H"
 #include "JacobianFunctionI.H"
 #include "ReactionFunctionI.H"
-
-#ifdef NoRepository
-    #include "OptReaction.C"
-    #include "Jacobian.C"
-    #include "ReactionRate.C"
-    #include "Tc.C"    
-#endif
-
-
-
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

@@ -1,4 +1,6 @@
 #include "OptReaction.H"
+#include "hashedWordList.H"
+#include "dictionary.H"
 #include <unordered_set>
 #include <numeric>
 #include <queue>

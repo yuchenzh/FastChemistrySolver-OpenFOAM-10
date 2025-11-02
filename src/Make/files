@@ -1,9 +1,16 @@
 basicFastChemistryModel/basicFastChemistryModel.C
 basicFastChemistryModel/basicFastChemistryModelNew.C
 
+ChemistryModel/FastChemistryModel.C
+
+Reaction/OptReaction.C
+Reaction/Jacobian.C
+Reaction/ReactionRate.C
+Reaction/Tc.C
+
 odeChemistrySolvers.C
+
 dataBlock/dataBlock.C
 dataBlock/simpleDataBlock/simpleDataBlock.C
 
 LIB = $(FOAM_USER_LIBBIN)/libFastChemistryModel
-

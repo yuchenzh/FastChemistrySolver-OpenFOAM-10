@@ -7,6 +7,10 @@
         "basicChemistryModel.C": "cpp",
         "odeChemistrySolvers.C": "cpp",
         "basicFastChemistryModelNew.C": "cpp",
-        "basicFastChemistryModel.C": "cpp"
+        "basicFastChemistryModel.C": "cpp",
+        "Tc.C": "cpp",
+        "ReactionRate.C": "cpp",
+        "OptReaction.C": "cpp",
+        "Jacobian.C": "cpp"
     }
 }

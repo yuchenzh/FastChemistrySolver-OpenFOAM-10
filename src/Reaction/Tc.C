@@ -1,5 +1,7 @@
 
 #include "OptReaction.H"
+#include "hashedWordList.H"
+#include "dictionary.H"
 
 void 
 OptReaction::Tc

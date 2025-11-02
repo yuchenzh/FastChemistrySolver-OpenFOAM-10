@@ -1,5 +1,4 @@
-template<class ThermoType>
-Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
+Foam::scalar Foam::FastChemistryModel::solve
 (
     const scalarField& deltaT
 )
