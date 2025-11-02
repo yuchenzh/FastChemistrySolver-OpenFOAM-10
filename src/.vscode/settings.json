@@ -7,6 +7,7 @@
         "OptReaction.C": "cpp",
         "OptRodas34.C": "cpp",
         "OptRosenbrock34.C": "cpp",
-        "reactingFoam.C": "cpp"
+        "reactingFoam.C": "cpp",
+        "OptSeulex.C": "cpp"
     }
 }

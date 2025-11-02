@@ -1,3 +1,6 @@
+basicFastChemistryModel/basicFastChemistryModel.C
+basicFastChemistryModel/basicFastChemistryModelNew.C
+
 odeChemistrySolvers.C
 dataBlock/dataBlock.C
 dataBlock/simpleDataBlock/simpleDataBlock.C

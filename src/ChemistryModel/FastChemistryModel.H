@@ -37,7 +37,7 @@ SourceFiles
 
 #include <chrono>
 
-#include "basicChemistryModel.H"
+#include "basicFastChemistryModel.H"
 #include "dataBlock.H"
 #include "simpleDataBlock.H"
 #include "OptReaction.H"
@@ -54,7 +54,7 @@ namespace Foam
 template<class ThermoType>
 class FastChemistryModel
 :
-    public basicChemistryModel
+    public basicFastChemistryModel
 {
     // Private data
 
@@ -194,7 +194,7 @@ public:
         inline OptReaction&  getReaction() const;
 
         // Chemistry model functions (overriding abstract functions in
-        // basicChemistryModel.H)
+        // basicFastChemistryModel.H)
 
             //- The number of species
             inline virtual label nSpecie() const;

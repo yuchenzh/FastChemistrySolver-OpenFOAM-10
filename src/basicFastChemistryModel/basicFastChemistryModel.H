@@ -22,19 +22,19 @@ License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
 Class
-    Foam::basicChemistryModel
+    Foam::basicFastChemistryModel
 
 Description
     Base class for chemistry models
 
 SourceFiles
-    basicChemistryModelI.H
-    basicChemistryModel.C
+    basicFastChemistryModelI.H
+    basicFastChemistryModel.C
 
 \*---------------------------------------------------------------------------*/
 
-#ifndef basicChemistryModel_H
-#define basicChemistryModel_H
+#ifndef basicFastChemistryModel_H
+#define basicFastChemistryModel_H
 
 #include "fluidReactionThermo.H"
 
@@ -47,10 +47,10 @@ namespace Foam
 class fvMesh;
 
 /*---------------------------------------------------------------------------*\
-                     class basicChemistryModel Declaration
+                     class basicFastChemistryModel Declaration
 \*---------------------------------------------------------------------------*/
 
-class basicChemistryModel
+class basicFastChemistryModel
 :
     public IOdictionary
 {
@@ -102,14 +102,14 @@ protected:
 public:
 
     //- Runtime type information
-    TypeName("basicChemistryModel");
+    TypeName("basicFastChemistryModel");
 
 
     //- Declare run-time constructor selection tables
     declareRunTimeSelectionTable
     (
         autoPtr,
-        basicChemistryModel,
+        basicFastChemistryModel,
         thermo,
         (const fluidReactionThermo& thermo),
         (thermo)
@@ -119,23 +119,23 @@ public:
     // Constructors
 
         //- Construct from thermo
-        basicChemistryModel(const fluidReactionThermo& thermo);
+        basicFastChemistryModel(const fluidReactionThermo& thermo);
 
         //- Disallow default bitwise copy construction
-        basicChemistryModel(const basicChemistryModel&) = delete;
+        basicFastChemistryModel(const basicFastChemistryModel&) = delete;
 
 
     // Selectors
 
         //- Select based on fluid reaction thermo
-        static autoPtr<basicChemistryModel> New
+        static autoPtr<basicFastChemistryModel> New
         (
             const fluidReactionThermo& thermo
         );
 
 
     //- Destructor
-    virtual ~basicChemistryModel();
+    virtual ~basicFastChemistryModel();
 
 
     // Member Functions
@@ -157,6 +157,28 @@ public:
 
         //- Return the latest estimation of integration step
         inline const volScalarField::Internal& deltaTChem() const;
+
+        // Rate evaluation on the basis of cells
+
+            //- Get reaction rates given Y, T, P
+            //  \param Y Species mass fractions
+            //  \param T Temperature [K]
+            //  \param p Pressure [Pa]
+            //  \param deltaT Time step [s]
+            //  \param deltaTChem Chemical time step [s] (output)
+            //  \param rho Density [kg/m^3]
+            //  \param rho0 Old time density [kg/m^3] (not sure)
+            //  \return Reaction rates for all species [kg/m^3/s] (not sure)
+        virtual scalarField getRRGivenYTP
+        (
+            const scalarField& Y,
+            const scalar T,
+            const scalar p,
+            const scalar deltaT,
+            scalar& deltaTChem,
+            const scalar& rho,
+            const scalar& rho0
+        ) const = 0;
 
 
         // Functions to be derived in derived classes
@@ -206,7 +228,7 @@ public:
     // Member Operators
 
         //- Disallow default bitwise assignment
-        void operator=(const basicChemistryModel&) = delete;
+        void operator=(const basicFastChemistryModel&) = delete;
 };
 
 
@@ -216,7 +238,7 @@ public:
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
-#include "basicChemistryModelI.H"
+#include "basicFastChemistryModelI.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

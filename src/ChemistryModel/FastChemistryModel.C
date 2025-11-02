@@ -25,7 +25,7 @@ License
 
 
 #include "FastChemistryModel.H"
-#include "basicChemistryModel.H"
+#include "basicFastChemistryModel.H"
 #include "OptReaction.H"
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
@@ -35,7 +35,7 @@ Foam::FastChemistryModel<ThermoType>::FastChemistryModel
 (
     const fluidReactionThermo& thermo
 )
-:   basicChemistryModel(thermo),
+:   basicFastChemistryModel(thermo),
     Yvf_(this->thermo().composition().Y()),
     nSpecie_(Yvf_.size()),
     jacobianType_

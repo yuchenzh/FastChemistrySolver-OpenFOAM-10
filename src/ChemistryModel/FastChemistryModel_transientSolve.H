@@ -7,7 +7,7 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
 
     auto GlobalTimeStart = std::chrono::high_resolution_clock::now();
     const scalar invDeltaT = 1.0/deltaT;
-    basicChemistryModel::correct();
+    basicFastChemistryModel::correct();
 
     scalar deltaTMin = great;
     if (!this->chemistry_)

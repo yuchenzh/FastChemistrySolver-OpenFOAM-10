@@ -1,0 +1,12 @@
+{
+    "files.associations": {
+        "reactingFoam.C": "cpp",
+        "FastChemistryModel.C": "cpp",
+        "basicChemistryModelNew.C": "cpp",
+        "ostream": "cpp",
+        "basicChemistryModel.C": "cpp",
+        "odeChemistrySolvers.C": "cpp",
+        "basicFastChemistryModelNew.C": "cpp",
+        "basicFastChemistryModel.C": "cpp"
+    }
+}

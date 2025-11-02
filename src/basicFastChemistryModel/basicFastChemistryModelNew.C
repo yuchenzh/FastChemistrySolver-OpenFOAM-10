@@ -23,13 +23,13 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-#include "basicChemistryModel.H"
+#include "basicFastChemistryModel.H"
 #include "basicThermo.H"
 #include "compileTemplate.H"
 
 // * * * * * * * * * * * * * * * * Selectors * * * * * * * * * * * * * * * * //
 
-Foam::autoPtr<Foam::basicChemistryModel> Foam::basicChemistryModel::New
+Foam::autoPtr<Foam::basicFastChemistryModel> Foam::basicFastChemistryModel::New
 (
     const fluidReactionThermo& thermo
 )
@@ -63,16 +63,33 @@ Foam::autoPtr<Foam::basicChemistryModel> Foam::basicChemistryModel::New
     const dictionary& chemistryTypeDict =
         chemistryDict.subDict("chemistryType");
 
-    const word solverName =
-         chemistryTypeDict.lookupBackwardsCompatible<word>
-         (
-             {"solver", "chemistrySolver"}
-         );
 
-    const word methodName
-    (
-        chemistryTypeDict.lookupOrDefault<word>("method", "chemistryModel")
-    );
+
+    // initialize solver name
+    word solverName = chemistryDict.subDict("odeCoeffs").lookup("solver");
+    if (solverName == "seulex" || solverName == "OptSeulex")
+    {
+        solverName = "OptSeulex";
+    }
+    else if (solverName == "Rodas34" || solverName == "OptRodas34")
+    {
+        solverName = "OptRodas34";
+    }
+    else if (solverName == "Rosenbrock34" || solverName == "OptRosenbrock34")
+    {
+        solverName = "OptRosenbrock34";
+    }
+    else
+    {
+        FatalErrorInFunction
+            << "Unsupported Fast ODE solver name: " << solverName << endl << nl
+            << "Available choices: seulx, Rodas34, Rosenbrock34" << exit(FatalError);
+    }
+    
+    // initialize method name
+    const word methodName("FastChemistryModel");
+
+
 
     dictionary chemistryTypeDictNew;
     chemistryTypeDictNew.add("solver", solverName);
@@ -83,6 +100,9 @@ Foam::autoPtr<Foam::basicChemistryModel> Foam::basicChemistryModel::New
     const word chemSolverNameName =
         solverName + '<' + methodName + '<' + thermo.thermoName() + ">>";
 
+    Info<< "Looking for: " << chemSolverNameName << endl;
+    Info<< "Available solvers in table: " << thermoConstructorTablePtr_->sortedToc() << endl;
+
     typename thermoConstructorTable::iterator cstrIter =
         thermoConstructorTablePtr_->find(chemSolverNameName);
 
@@ -91,7 +111,7 @@ Foam::autoPtr<Foam::basicChemistryModel> Foam::basicChemistryModel::New
         if
         (
             dynamicCode::allowSystemOperations
-         && !dynamicCode::resolveTemplate(basicChemistryModel::typeName).empty()
+         && !dynamicCode::resolveTemplate(basicFastChemistryModel::typeName).empty()
         )
         {
             List<Pair<word>> substitutions
@@ -104,7 +124,7 @@ Foam::autoPtr<Foam::basicChemistryModel> Foam::basicChemistryModel::New
 
             compileTemplate chemistryModel
             (
-                basicChemistryModel::typeName,
+                basicFastChemistryModel::typeName,
                 chemSolverNameName,
                 substitutions
             );
@@ -114,7 +134,7 @@ Foam::autoPtr<Foam::basicChemistryModel> Foam::basicChemistryModel::New
             {
                 FatalErrorInFunction
                     << "Compilation and linkage of "
-                    << basicChemistryModel::typeName << " type " << nl
+                    << basicFastChemistryModel::typeName << " type " << nl
                     << "chemistryType" << chemistryTypeDict << nl << nl
                     << "failed." << exit(FatalError);
             }
@@ -185,7 +205,7 @@ Foam::autoPtr<Foam::basicChemistryModel> Foam::basicChemistryModel::New
         }
     }
 
-    return autoPtr<basicChemistryModel>(cstrIter()(thermo));
+    return autoPtr<basicFastChemistryModel>(cstrIter()(thermo));
 }
 
 

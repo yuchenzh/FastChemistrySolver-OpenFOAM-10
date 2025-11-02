@@ -27,10 +27,10 @@ License
 #include "OptRodas34.H"
 #include "OptSeulex.H"
 #include "FastChemistryModel.H"
-#include "basicChemistryModel.H"
+#include "basicFastChemistryModel.H"
 #include "forGases.H"
 #include "forLiquids.H"
-#include "makeChemistrySolver.H"
+//#include "makeChemistrySolver.H"
 #include "forThermo.H"
 #include "chemistryModel.H"
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -38,28 +38,66 @@ License
 namespace Foam
 {
 
-#define defineMyChemistrySolver(Transport,Energy,Thermo,Equation,Specie,solver)  \
-                                                                               \
-    typedefThermo(Transport,Energy,Thermo,Equation,Specie);                    \
-                                                                               \
-                                                                               \
-    defineChemistrySolver                                                      \
-    (                                                                          \
-        FastChemistryModel,                                                      \
-        Transport##Energy##Thermo##Equation##Specie                            \
-    );                                                                         \
-    makeChemistrySolver                                                        \
-    (                                                                          \
-        solver,                                                                 \
-        FastChemistryModel,                                                      \
-        Transport##Energy##Thermo##Equation##Specie                            \
-    );                                                                         \
-                                                                               \
+// #define defineMyChemistrySolver(Transport,Energy,Thermo,Equation,Specie,solver)  \
+//                                                                                \
+//     typedefThermo(Transport,Energy,Thermo,Equation,Specie);                    \
+//                                                                                \
+//                                                                                \
+//     defineChemistrySolver                                                      \
+//     (                                                                          \
+//         FastChemistryModel,                                                      \
+//         Transport##Energy##Thermo##Equation##Specie                            \
+//     );                                                                         \
+//     makeChemistrySolver                                                        \
+//     (                                                                          \
+//         solver,                                                                 \
+//         FastChemistryModel,                                                      \
+//         Transport##Energy##Thermo##Equation##Specie                            \
+//     );                                                                         \
+//                                                                                \
 
 
 //template instantiation
 
-
+ 
+ #define defineChemistrySolver(Model, ThermoPhysics)                            \
+                                                                                \
+     typedef Model<ThermoPhysics>                                               \
+         Model##ThermoPhysics;                                                  \
+                                                                                \
+     defineTemplateTypeNameAndDebugWithName                                     \
+     (                                                                          \
+         Model##ThermoPhysics,                                                  \
+         (                                                                      \
+             word(Model##ThermoPhysics::typeName_())                            \
+           + "<" + ThermoPhysics::typeName() + ">"                              \
+         ).c_str(),                                                             \
+         0                                                                      \
+     )
+ 
+ 
+#define makeChemistrySolver(Solver, Model, ThermoPhysics)                      \
+                                                                            \
+    typedef Solver<Model<ThermoPhysics>>                                       \
+        Solver##Model##ThermoPhysics;                                          \
+                                                                            \
+    defineTemplateTypeNameAndDebugWithName                                     \
+    (                                                                          \
+        Solver##Model##ThermoPhysics,                                          \
+        (                                                                      \
+            word(Solver##Model##ThermoPhysics::typeName_())                    \
+        + "<" + word(Model<ThermoPhysics>::typeName_())                      \
+        + "<" + ThermoPhysics::typeName() + ">>"                             \
+        ).c_str(),                                                             \
+        0                                                                      \
+    );                                                                         \
+                                                                            \
+    addToRunTimeSelectionTable                                                 \
+    (                                                                          \
+        basicFastChemistryModel,                                                   \
+        Solver##Model##ThermoPhysics,                                          \
+        thermo                                                                 \
+    )
 typedefThermo(sutherlandTransport,   sensibleEnthalpy,   janafThermo,    perfectGas, specie);
 defineChemistrySolver (FastChemistryModel,  sutherlandTransportsensibleEnthalpyjanafThermoperfectGasspecie)
 makeChemistrySolver(OptRosenbrock34,FastChemistryModel,sutherlandTransportsensibleEnthalpyjanafThermoperfectGasspecie);

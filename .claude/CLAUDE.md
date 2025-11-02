@@ -81,14 +81,67 @@ initialChemicalTimeStep 1e-8;
 
 ## 当前任务
 
-### 目标
-将 `FastChemistryModel` 的 `getRRGivenYTP` 功能包装为一个通用接口，使得其他化学模型也能轻松使用该功能，而无需显式修改 `basicChemistryModel` 基类。
+### 总体目标
+将 FastChemistrySolver 集成到 OpenFOAM 标准化学模型框架，使其能够在其他求解器和库中使用。
 
-### 设计约束
-1. 不直接修改 `basicChemistryModel` 基类添加 `getRRGivenYTP` 虚函数
-2. 提供一个灵活的包装器或工具类
-3. 保持与现有代码的兼容性
-4. 易于在 `testFoam` 等求解器中调用
+### 实施步骤（按顺序执行）
+
+#### 步骤 1: 重命名 basicChemistryModel ⏳
+**目标**: 避免与 OpenFOAM 标准库的 `basicChemistryModel` 冲突
+
+**任务**:
+- 将自定义的 `basicChemistryModel` 重命名为新名称（如 `fastBasicChemistryModel`）
+- 更新所有相关文件中的引用
+- 修复所有依赖关系
+- 确保编译通过
+
+**涉及文件**:
+- `src/basicChemistryModel/basicChemistryModel.{H,C}`
+- `src/basicChemistryModel/basicChemistryModelNew.C`
+- `src/ChemistryModel/FastChemistryModel.{H,C}`
+- 所有包含该类的头文件
+
+#### 步骤 2: 修改 chemistryModelNew 构造逻辑 ⏳
+**目标**: 实现精确构造，从子字典读取配置而非整个 chemistryProperties
+
+**当前问题**:
+- 构造函数读取整个 `chemistryProperties` 字典
+- 需要改为读取其中的特定子字典
+
+**修改方案**:
+- 修改 `basicChemistryModelNew::New()` 函数
+- 从 `chemistryProperties` 的某个子字典读取配置
+- 支持更精确的模型选择和参数配置
+
+**涉及文件**:
+- `src/basicChemistryModel/basicChemistryModelNew.C`
+
+#### 步骤 3: 添加 getRRGivenYTP 到基类 ⏳
+**目标**: 将 `getRRGivenYTP` 作为基类虚函数，移除临时的 Helper 类
+
+**任务**:
+- 在重命名后的基类中添加虚函数 `getRRGivenYTP`
+- `FastChemistryModel` 重写该方法
+- 移除 `ChemistryModelHelper` 类
+- 更新所有调用代码直接使用基类接口
+
+**涉及文件**:
+- 基类头文件（重命名后）
+- `src/ChemistryModel/FastChemistryModel.{H,C}`
+- `src/ChemistryModel/ChemistryModelHelper.{H}` (删除)
+- `src/ChemistryModel/ChemistryModelHelperI.H` (删除)
+
+### 当前进度
+- ✅ ChemistryModelHelper 临时实现完成（临时方案）
+- ⏳ **进行中**: 步骤 1 - 重命名 basicChemistryModel
+- ⏳ **待完成**: 步骤 2 - 修改构造逻辑
+- ⏳ **待完成**: 步骤 3 - 添加 getRRGivenYTP 到基类
+
+### 设计原则
+1. 遵循 OpenFOAM 运行时选择表 (RTST) 机制
+2. 保持与现有代码兼容
+3. 逐步重构，每步验证编译和功能
+4. 最终目标：通过基类接口直接调用 `getRRGivenYTP`
 
 ## 编译问题修复历史
 

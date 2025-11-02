@@ -23,14 +23,14 @@ License
 
 \*---------------------------------------------------------------------------*/
 
-#include "basicChemistryModel.H"
+#include "basicFastChemistryModel.H"
 
 /* * * * * * * * * * * * * * * Static Member Data  * * * * * * * * * * * * * */
 
 namespace Foam
 {
     template<>
-    const char* NamedEnum<basicChemistryModel::jacobianType, 2>::names[] =
+    const char* NamedEnum<basicFastChemistryModel::jacobianType, 2>::names[] =
     {
         "fast",
         "exact"
@@ -40,27 +40,27 @@ namespace Foam
 
 const Foam::NamedEnum
 <
-    Foam::basicChemistryModel::jacobianType,
+    Foam::basicFastChemistryModel::jacobianType,
     2
-> Foam::basicChemistryModel::jacobianTypeNames_;
+> Foam::basicFastChemistryModel::jacobianTypeNames_;
 
 
 namespace Foam
 {
-    defineTypeNameAndDebug(basicChemistryModel, 0);
-    defineRunTimeSelectionTable(basicChemistryModel, thermo);
+    defineTypeNameAndDebug(basicFastChemistryModel, 0);
+    defineRunTimeSelectionTable(basicFastChemistryModel, thermo);
 }
 
 
 // * * * * * * * * * * * * * Protected Member Functions  * * * * * * * * * * //
 
-void Foam::basicChemistryModel::correct()
+void Foam::basicFastChemistryModel::correct()
 {}
 
 
 // * * * * * * * * * * * * * * * * Constructors  * * * * * * * * * * * * * * //
 
-Foam::basicChemistryModel::basicChemistryModel
+Foam::basicFastChemistryModel::basicFastChemistryModel
 (
     const fluidReactionThermo& thermo
 )
@@ -99,7 +99,7 @@ Foam::basicChemistryModel::basicChemistryModel
 
 // * * * * * * * * * * * * * * * * Destructor  * * * * * * * * * * * * * * * //
 
-Foam::basicChemistryModel::~basicChemistryModel()
+Foam::basicFastChemistryModel::~basicFastChemistryModel()
 {}
 
 
