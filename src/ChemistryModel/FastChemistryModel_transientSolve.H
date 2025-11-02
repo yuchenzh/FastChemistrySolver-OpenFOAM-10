@@ -38,45 +38,65 @@ Foam::scalar Foam::FastChemistryModel<ThermoType>::solve
             {
                 scalar p = p0vf[celli];
                 const scalar rho0 = rho0vf[celli];
-
-                // Load thermophysical variable into Phi vector
-                for (label i=0; i<nSpecie_; i++)
+                scalarField Ycell(nSpecie_);
+                forAll(Ycell,i)
                 {
-                    Phi00[i] = Yvf_[i].oldTime()[celli];
+                    Ycell[i] = Yvf_[i].oldTime()[celli];
                 }
-                for (label i=0; i<nSpecie_; i++)
-                {
-                    Phi00[i] = max(0,Phi00[i]);
-                    Phi0[i] =  Phi00[i];
-                }
-                Phi00[this->nSpecie()] = T;
-                Phi0[this->nSpecie()]  = T;
+                scalarField RR = getRRGivenYTP(
+                    Ycell,
+                    T,
+                    p,
+                    deltaT,
+                    deltaTChem_[celli],
+                    rho0,
+                    rho0
+                );
+            
 
-                // Initialise time progress
-                scalar timeLeft = deltaT;
+                // // Load thermophysical variable into Phi vector
+                // for (label i=0; i<nSpecie_; i++)
+                // {
+                //     Phi00[i] = Yvf_[i].oldTime()[celli];
+                // }
+                // for (label i=0; i<nSpecie_; i++)
+                // {
+                //     Phi00[i] = max(0,Phi00[i]);
+                //     Phi0[i] =  Phi00[i];
+                // }
+                // Phi00[this->nSpecie()] = T;
+                // Phi0[this->nSpecie()]  = T;
+
+                // // Initialise time progress
+                // scalar timeLeft = deltaT;
         
-                // Calculate the chemical source terms
-                while (timeLeft > small)
-                {
-                    scalar dt = timeLeft;
-                    solve(celli, p, dt, deltaTChem_[celli]);
-                    timeLeft -= dt;
-                }
+                // // Calculate the chemical source terms
+                // while (timeLeft > small)
+                // {
+                //     scalar dt = timeLeft;
+                //     solve(celli, p, dt, deltaTChem_[celli]);
+                //     timeLeft -= dt;
+                // }
 
                 deltaTMin = min(deltaTChem_[celli], deltaTMin);
                 deltaTChem_[celli] = min(deltaTChem_[celli], deltaTChemMax_);
         
         
-                // Set the RR vector (used in the solver)
-                for (label i=0; i<nSpecie_; i++)
+                // // Set the RR vector (used in the solver)
+                // for (label i=0; i<nSpecie_; i++)
+                // {
+                //     Phi0[i] = max(0,Phi0[i]);
+                // }                
+                // for (label i=0; i<nSpecie_; i++)
+                // {
+                //     RR_[i][celli] = (Phi0[i]- Phi00[i])*rho0*invDeltaT;
+                // }
+                for(label i=0; i<nSpecie_; i++)
                 {
-                    Phi0[i] = max(0,Phi0[i]);
-                }                
-                for (label i=0; i<nSpecie_; i++)
-                {
-                    RR_[i][celli] = (Phi0[i]- Phi00[i])*rho0*invDeltaT;
+                    RR_[i][celli] = RR[i];
                 }
             }
+            
             else
             {
                 for (label i=0; i<nSpecie_; i++)

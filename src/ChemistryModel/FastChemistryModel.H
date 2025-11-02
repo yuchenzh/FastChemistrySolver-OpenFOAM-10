@@ -35,6 +35,7 @@ SourceFiles
 #ifndef FastChemistryModel_H
 #define FastChemistryModel_H
 
+#include <chrono>
 
 #include "basicChemistryModel.H"
 #include "dataBlock.H"
@@ -270,6 +271,18 @@ public:
                 double& __restrict__ deltaT,
                 double& __restrict__ subDeltaT
             ) const = 0;  
+
+        // Rate evaluation on the basis of cells
+            scalarField getRRGivenYTP
+            (
+                const scalarField& Y,
+                const scalar T,
+                const scalar p,
+                const scalar deltaT,
+                scalar& deltaTChem,
+                const scalar& rho,
+                const scalar& rho0
+            ) const;
 
     // Member Operators
 

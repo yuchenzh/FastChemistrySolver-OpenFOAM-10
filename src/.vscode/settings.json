@@ -1,0 +1,12 @@
+{
+    "files.associations": {
+        "odeChemistrySolvers.C": "cpp",
+        "basicChemistryModel.C": "cpp",
+        "basicChemistryModelNew.C": "cpp",
+        "FastChemistryModel.C": "cpp",
+        "OptReaction.C": "cpp",
+        "OptRodas34.C": "cpp",
+        "OptRosenbrock34.C": "cpp",
+        "reactingFoam.C": "cpp"
+    }
+}

@@ -744,6 +744,63 @@ void Foam::FastChemistryModel<ThermoType>::exchangeSizes
     Pout<<"exchangesize: recvSizes: "<<recvSizes<<endl;
 }
 
+template<class ThermoType>
+Foam::scalarField Foam::FastChemistryModel<ThermoType>::getRRGivenYTP
+(
+    const scalarField& Y,
+    const scalar T,
+    const scalar p,
+    const scalar deltaT,
+    scalar& deltaTChem,
+    const scalar& rho,
+    const scalar& rho0
+) const
+{
+    scalarField Y0(Y);
+    scalarField Yupdate(Y);
+    scalar Tupdate(T);
+    scalar pupdate(p);
+ 
+    scalar timeLeft = deltaT;
+    int dummyCelli=0;
+ 
+    double* Phi00 = this->YTpWork[0];
+    double* Phi0 = this->YTpWork[1];
+    // Load thermophysical variable into Phi vector
+    for (label i=0; i<this->nSpecie(); i++)
+    {
+        Phi00[i] = Y[i];
+    }
+    for (label i=0; i<this->nSpecie(); i++)
+    {
+        Phi00[i] = max(0,Phi00[i]);
+        Phi0[i] =  Phi00[i];
+    }
+    Phi00[this->nSpecie()] = T;
+    Phi0[this->nSpecie()]  = T;
+ 
+    // Calculate the chemical source terms
+    while (timeLeft > small)
+    {
+        scalar dt = timeLeft;
+        //solve(pupdate, Tupdate, Yupdate, dummyCelli, dt, deltaTChem);
+        this->solve(dummyCelli,pupdate,dt,deltaTChem);
+        timeLeft -= dt;
+    }
+    
+    // update RR
+    scalarField RR(this->nSpecie());
+    for (label i=0; i<this->nSpecie(); i++)
+    {
+        Phi0[i] = max(0,Phi0[i]);
+    }      
+    for (label i=0; i<this->nSpecie(); i++)
+    {
+        RR[i] = (Phi0[i]*rho - Phi00[i]*rho0)/deltaT;
+    }
+ 
+    return RR;
+}
 
 
 // ************************************************************************* //
