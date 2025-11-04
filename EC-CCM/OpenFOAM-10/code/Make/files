@@ -1,0 +1,19 @@
+ReactionEntry/ReactionEntry.C
+ReactionEntry/RREntry.C
+RoundRobin/RoundRobin.C
+
+
+interface/chemistrySolvers.C
+interface/odeChemistrySolvers.C
+
+odeChemistryModel/CCModeChemistryModel.C
+
+chemistryModel/reduction/chemistryReductionMethod/CCMchemistryReductionMethods.C
+chemistryModel/reduction/noChemistryReduction/cNoChemistryReductionMethods.C
+
+chemistryModel/tabulation/chemistryTabulationMethod/CCMchemistryTabulationMethod.C
+chemistryModel/tabulation/chemistryTabulationMethod/CCMchemistryTabulationMethodNew.C
+chemistryModel/tabulation/noChemistryTabulation/cNoChemistryTabulation.C
+
+
+LIB = $(FOAM_USER_LIBBIN)/libCCM

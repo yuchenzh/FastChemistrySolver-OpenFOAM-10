@@ -1,0 +1,12 @@
+{
+    "files.associations": {
+        "CCMchemistryModel.C": "cpp",
+        "CCMDebug.C": "cpp",
+        "chrono": "cpp",
+        "random": "cpp",
+        "limits": "cpp",
+        "semaphore": "cpp",
+        "CCMUtilities.C": "cpp",
+        "CCMchemistryReductionMethod.C": "cpp"
+    }
+}

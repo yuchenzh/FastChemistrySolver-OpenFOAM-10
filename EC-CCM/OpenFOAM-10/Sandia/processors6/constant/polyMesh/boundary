@@ -1,0 +1,611 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  10
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    format      binary;
+    class       decomposedBlockData;
+    location    "/home/zhouyuchen/Desktop/FastChemistrySolver-OpenFOAM-10/EC-CCM/OpenFOAM-10/Sandia/processors6/constant/polyMesh/boundary";
+    object      boundary;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+
+// Processor0
+
+2475
+(/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  10
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    format      ascii;
+    class       polyBoundaryMesh;
+    location    "constant/polyMesh";
+    object      boundary;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+11
+(
+    inletCH4
+    {
+        type            patch;
+        nFaces          0;
+        startFace       1669;
+    }
+    wallOutside
+    {
+        type            wall;
+        inGroups        List<word> 1(wall);
+        nFaces          27;
+        startFace       1669;
+    }
+    wallTube
+    {
+        type            wall;
+        inGroups        List<word> 1(wall);
+        nFaces          0;
+        startFace       1696;
+    }
+    inletPilot
+    {
+        type            patch;
+        nFaces          0;
+        startFace       1696;
+    }
+    inletAir
+    {
+        type            patch;
+        nFaces          0;
+        startFace       1696;
+    }
+    outlet
+    {
+        type            patch;
+        nFaces          32;
+        startFace       1696;
+    }
+    axis
+    {
+        type            empty;
+        inGroups        List<word> 1(empty);
+        nFaces          0;
+        startFace       1728;
+    }
+    frontAndBack_pos
+    {
+        type            wedge;
+        inGroups        List<word> 1(wedge);
+        nFaces          864;
+        startFace       1728;
+    }
+    frontAndBack_neg
+    {
+        type            wedge;
+        inGroups        List<word> 1(wedge);
+        nFaces          864;
+        startFace       2592;
+    }
+    procBoundary0to2
+    {
+        type            processor;
+        inGroups        List<word> 1(processor);
+        nFaces          32;
+        startFace       3456;
+        matchTolerance  0.0001;
+        myProcNo        0;
+        neighbProcNo    2;
+    }
+    procBoundary0to4
+    {
+        type            processor;
+        inGroups        List<word> 1(processor);
+        nFaces          27;
+        startFace       3488;
+        matchTolerance  0.0001;
+        myProcNo        0;
+        neighbProcNo    4;
+    }
+)
+
+// ************************************************************************* //
+)
+
+// Processor1
+
+2047
+(12
+(
+    inletCH4
+    {
+        type            patch;
+        nFaces          0;
+        startFace       1654;
+    }
+    wallOutside
+    {
+        type            wall;
+        inGroups        List<word> 1(wall);
+        nFaces          19;
+        startFace       1654;
+    }
+    wallTube
+    {
+        type            wall;
+        inGroups        List<word> 1(wall);
+        nFaces          0;
+        startFace       1673;
+    }
+    inletPilot
+    {
+        type            patch;
+        nFaces          0;
+        startFace       1673;
+    }
+    inletAir
+    {
+        type            patch;
+        nFaces          44;
+        startFace       1673;
+    }
+    outlet
+    {
+        type            patch;
+        nFaces          0;
+        startFace       1717;
+    }
+    axis
+    {
+        type            empty;
+        inGroups        List<word> 1(empty);
+        nFaces          0;
+        startFace       1717;
+    }
+    frontAndBack_pos
+    {
+        type            wedge;
+        inGroups        List<word> 1(wedge);
+        nFaces          860;
+        startFace       1717;
+    }
+    frontAndBack_neg
+    {
+        type            wedge;
+        inGroups        List<word> 1(wedge);
+        nFaces          860;
+        startFace       2577;
+    }
+    procBoundary1to2
+    {
+        type            processor;
+        inGroups        List<word> 1(processor);
+        nFaces          40;
+        startFace       3437;
+        matchTolerance  0.0001;
+        myProcNo        1;
+        neighbProcNo    2;
+    }
+    procBoundary1to3
+    {
+        type            processor;
+        inGroups        List<word> 1(processor);
+        nFaces          22;
+        startFace       3477;
+        matchTolerance  0.0001;
+        myProcNo        1;
+        neighbProcNo    3;
+    }
+    procBoundary1to5
+    {
+        type            processor;
+        inGroups        List<word> 1(processor);
+        nFaces          7;
+        startFace       3499;
+        matchTolerance  0.0001;
+        myProcNo        1;
+        neighbProcNo    5;
+    }
+))
+
+// Processor2
+
+2308
+(13
+(
+    inletCH4
+    {
+        type            patch;
+        nFaces          0;
+        startFace       1661;
+    }
+    wallOutside
+    {
+        type            wall;
+        inGroups        List<word> 1(wall);
+        nFaces          24;
+        startFace       1661;
+    }
+    wallTube
+    {
+        type            wall;
+        inGroups        List<word> 1(wall);
+        nFaces          0;
+        startFace       1685;
+    }
+    inletPilot
+    {
+        type            patch;
+        nFaces          0;
+        startFace       1685;
+    }
+    inletAir
+    {
+        type            patch;
+        nFaces          0;
+        startFace       1685;
+    }
+    outlet
+    {
+        type            patch;
+        nFaces          0;
+        startFace       1685;
+    }
+    axis
+    {
+        type            empty;
+        inGroups        List<word> 1(empty);
+        nFaces          0;
+        startFace       1685;
+    }
+    frontAndBack_pos
+    {
+        type            wedge;
+        inGroups        List<word> 1(wedge);
+        nFaces          861;
+        startFace       1685;
+    }
+    frontAndBack_neg
+    {
+        type            wedge;
+        inGroups        List<word> 1(wedge);
+        nFaces          861;
+        startFace       2546;
+    }
+    procBoundary2to0
+    {
+        type            processor;
+        inGroups        List<word> 1(processor);
+        nFaces          32;
+        startFace       3407;
+        matchTolerance  0.0001;
+        myProcNo        2;
+        neighbProcNo    0;
+    }
+    procBoundary2to1
+    {
+        type            processor;
+        inGroups        List<word> 1(processor);
+        nFaces          40;
+        startFace       3439;
+        matchTolerance  0.0001;
+        myProcNo        2;
+        neighbProcNo    1;
+    }
+    procBoundary2to4
+    {
+        type            processor;
+        inGroups        List<word> 1(processor);
+        nFaces          10;
+        startFace       3479;
+        matchTolerance  0.0001;
+        myProcNo        2;
+        neighbProcNo    4;
+    }
+    procBoundary2to5
+    {
+        type            processor;
+        inGroups        List<word> 1(processor);
+        nFaces          16;
+        startFace       3489;
+        matchTolerance  0.0001;
+        myProcNo        2;
+        neighbProcNo    5;
+    }
+))
+
+// Processor3
+
+1787
+(11
+(
+    inletCH4
+    {
+        type            patch;
+        nFaces          5;
+        startFace       1630;
+    }
+    wallOutside
+    {
+        type            wall;
+        inGroups        List<word> 1(wall);
+        nFaces          0;
+        startFace       1635;
+    }
+    wallTube
+    {
+        type            wall;
+        inGroups        List<word> 1(wall);
+        nFaces          61;
+        startFace       1635;
+    }
+    inletPilot
+    {
+        type            patch;
+        nFaces          5;
+        startFace       1696;
+    }
+    inletAir
+    {
+        type            patch;
+        nFaces          16;
+        startFace       1701;
+    }
+    outlet
+    {
+        type            patch;
+        nFaces          0;
+        startFace       1717;
+    }
+    axis
+    {
+        type            empty;
+        inGroups        List<word> 1(empty);
+        nFaces          0;
+        startFace       1717;
+    }
+    frontAndBack_pos
+    {
+        type            wedge;
+        inGroups        List<word> 1(wedge);
+        nFaces          861;
+        startFace       1717;
+    }
+    frontAndBack_neg
+    {
+        type            wedge;
+        inGroups        List<word> 1(wedge);
+        nFaces          861;
+        startFace       2578;
+    }
+    procBoundary3to1
+    {
+        type            processor;
+        inGroups        List<word> 1(processor);
+        nFaces          22;
+        startFace       3439;
+        matchTolerance  0.0001;
+        myProcNo        3;
+        neighbProcNo    1;
+    }
+    procBoundary3to5
+    {
+        type            processor;
+        inGroups        List<word> 1(processor);
+        nFaces          30;
+        startFace       3461;
+        matchTolerance  0.0001;
+        myProcNo        3;
+        neighbProcNo    5;
+    }
+))
+
+// Processor4
+
+2047
+(12
+(
+    inletCH4
+    {
+        type            patch;
+        nFaces          0;
+        startFace       1653;
+    }
+    wallOutside
+    {
+        type            wall;
+        inGroups        List<word> 1(wall);
+        nFaces          0;
+        startFace       1653;
+    }
+    wallTube
+    {
+        type            wall;
+        inGroups        List<word> 1(wall);
+        nFaces          0;
+        startFace       1653;
+    }
+    inletPilot
+    {
+        type            patch;
+        nFaces          0;
+        startFace       1653;
+    }
+    inletAir
+    {
+        type            patch;
+        nFaces          0;
+        startFace       1653;
+    }
+    outlet
+    {
+        type            patch;
+        nFaces          39;
+        startFace       1653;
+    }
+    axis
+    {
+        type            empty;
+        inGroups        List<word> 1(empty);
+        nFaces          0;
+        startFace       1692;
+    }
+    frontAndBack_pos
+    {
+        type            wedge;
+        inGroups        List<word> 1(wedge);
+        nFaces          862;
+        startFace       1692;
+    }
+    frontAndBack_neg
+    {
+        type            wedge;
+        inGroups        List<word> 1(wedge);
+        nFaces          862;
+        startFace       2554;
+    }
+    procBoundary4to0
+    {
+        type            processor;
+        inGroups        List<word> 1(processor);
+        nFaces          27;
+        startFace       3416;
+        matchTolerance  0.0001;
+        myProcNo        4;
+        neighbProcNo    0;
+    }
+    procBoundary4to2
+    {
+        type            processor;
+        inGroups        List<word> 1(processor);
+        nFaces          10;
+        startFace       3443;
+        matchTolerance  0.0001;
+        myProcNo        4;
+        neighbProcNo    2;
+    }
+    procBoundary4to5
+    {
+        type            processor;
+        inGroups        List<word> 1(processor);
+        nFaces          46;
+        startFace       3453;
+        matchTolerance  0.0001;
+        myProcNo        4;
+        neighbProcNo    5;
+    }
+))
+
+// Processor5
+
+2306
+(13
+(
+    inletCH4
+    {
+        type            patch;
+        nFaces          0;
+        startFace       1662;
+    }
+    wallOutside
+    {
+        type            wall;
+        inGroups        List<word> 1(wall);
+        nFaces          0;
+        startFace       1662;
+    }
+    wallTube
+    {
+        type            wall;
+        inGroups        List<word> 1(wall);
+        nFaces          0;
+        startFace       1662;
+    }
+    inletPilot
+    {
+        type            patch;
+        nFaces          0;
+        startFace       1662;
+    }
+    inletAir
+    {
+        type            patch;
+        nFaces          0;
+        startFace       1662;
+    }
+    outlet
+    {
+        type            patch;
+        nFaces          0;
+        startFace       1662;
+    }
+    axis
+    {
+        type            empty;
+        inGroups        List<word> 1(empty);
+        nFaces          0;
+        startFace       1662;
+    }
+    frontAndBack_pos
+    {
+        type            wedge;
+        inGroups        List<word> 1(wedge);
+        nFaces          862;
+        startFace       1662;
+    }
+    frontAndBack_neg
+    {
+        type            wedge;
+        inGroups        List<word> 1(wedge);
+        nFaces          862;
+        startFace       2524;
+    }
+    procBoundary5to1
+    {
+        type            processor;
+        inGroups        List<word> 1(processor);
+        nFaces          7;
+        startFace       3386;
+        matchTolerance  0.0001;
+        myProcNo        5;
+        neighbProcNo    1;
+    }
+    procBoundary5to2
+    {
+        type            processor;
+        inGroups        List<word> 1(processor);
+        nFaces          16;
+        startFace       3393;
+        matchTolerance  0.0001;
+        myProcNo        5;
+        neighbProcNo    2;
+    }
+    procBoundary5to3
+    {
+        type            processor;
+        inGroups        List<word> 1(processor);
+        nFaces          30;
+        startFace       3409;
+        matchTolerance  0.0001;
+        myProcNo        5;
+        neighbProcNo    3;
+    }
+    procBoundary5to4
+    {
+        type            processor;
+        inGroups        List<word> 1(processor);
+        nFaces          46;
+        startFace       3439;
+        matchTolerance  0.0001;
+        myProcNo        5;
+        neighbProcNo    4;
+    }
+))

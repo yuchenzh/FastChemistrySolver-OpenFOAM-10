@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "RoundRobin.C": "cpp",
+        "hello.C": "cpp",
+        "CCMchemistryModel.C": "cpp"
+    }
+}

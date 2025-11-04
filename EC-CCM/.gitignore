@@ -1,0 +1,6 @@
+# Ignore OpenFOAM compilation artifacts
+**/lnInclude/
+**/Make/linux*/
+
+# Ignore test logs
+test_initJCoeffs_*.log

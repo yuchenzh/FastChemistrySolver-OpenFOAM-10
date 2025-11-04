@@ -11,6 +11,11 @@
         "Tc.C": "cpp",
         "ReactionRate.C": "cpp",
         "OptReaction.C": "cpp",
-        "Jacobian.C": "cpp"
+        "Jacobian.C": "cpp",
+        "CCMchemistryModel.C": "cpp",
+        "memory": "cpp",
+        "stop_token": "cpp",
+        "semaphore": "cpp",
+        "chemistryproperties": "cpp"
     }
 }
