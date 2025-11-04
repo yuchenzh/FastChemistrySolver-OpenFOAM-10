@@ -35,12 +35,6 @@ odeCoeffs
 }
 
 
-OptSeulexCoeffs
-{
-    solver          seulex;
-    absTol          1e-08;
-    relTol          0.1;
-}
 
 importantSpecies
 {
@@ -61,6 +55,8 @@ CCM
     //principalVars ("T");
     nSlice                50;
     ignoreMin            1e-6;
+
+    optimizedODE         true;
 
     // debug Switches
     debugMode            false;

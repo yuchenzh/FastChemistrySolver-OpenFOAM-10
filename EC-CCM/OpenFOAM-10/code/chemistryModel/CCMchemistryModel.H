@@ -383,7 +383,21 @@ class CCMchemistryModel
         mutable rrEntriesList preAllocatedReceivedRREntries_;
 
         //- Optimized ODE solver
+        Switch optimizedODE_;
         const autoPtr<basicFastChemistryModel> fastChemistryPtr_;
+
+        typedef scalarField (CCMchemistryModel<ThermoType>::*GetRRFuncType)
+        (
+                scalarField& Y,
+                scalar& T, 
+                scalar& p,
+                const scalar& deltaT,
+                scalar& deltaTChem,
+                const scalar& rho,
+                const scalar& rho0
+        );
+
+        GetRRFuncType GetRRFunc_;
 
     // Private Member Functions
 
@@ -533,6 +547,28 @@ public:
             // Note, density should be provided!
             // deltaTChem will be modified!
             scalarField getRRGivenYTP
+            (
+                scalarField& Y,
+                scalar& T, 
+                scalar& p,
+                const scalar& deltaT,
+                scalar& deltaTChem,
+                const scalar& rho,
+                const scalar& rho0
+            );
+
+            scalarField getRRGivenYTP_Optimized
+            (
+                scalarField& Y,
+                scalar& T, 
+                scalar& p,
+                const scalar& deltaT,
+                scalar& deltaTChem,
+                const scalar& rho,
+                const scalar& rho0
+            );
+
+            scalarField getRRGivenYTP_Basic
             (
                 scalarField& Y,
                 scalar& T, 

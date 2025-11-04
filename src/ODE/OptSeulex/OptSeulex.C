@@ -37,7 +37,7 @@ Foam::OptSeulex<ChemistryModel>::OptSeulex
 )
 :
     chemistrySolver<ChemistryModel>(thermo),
-    coeffsDict_(this->subDict("OptSeulexCoeffs")),
+    coeffsDict_(this->subDict("odeCoeffs")),
     absTol_(coeffsDict_.lookup<scalar>("absTol")),
     relTol_(coeffsDict_.lookup<scalar>("relTol")),
     maxSteps_(coeffsDict_.lookupOrDefault("maxSteps",10000)),

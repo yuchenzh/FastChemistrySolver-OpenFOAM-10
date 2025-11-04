@@ -80,7 +80,7 @@ Foam::FastChemistryModel::FastChemistryModel
     );
 
     label defaultIndex = 0;
-    const word defaultSpecie = thermoDict.lookup("defaultSpecie");
+    const word defaultSpecie = thermoDict.lookupBackwardsCompatible<word>({"defaultSpecie","inertSpecie"});
     Info<<"The default specie is "<<defaultSpecie<<endl;
 
     hashedWordList speciesTable(thermoDict.lookup("species"));

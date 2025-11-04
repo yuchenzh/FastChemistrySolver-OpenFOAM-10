@@ -37,7 +37,7 @@ Foam::OptRodas34<ChemistryModel>::OptRodas34
 )
 :
     chemistrySolver<ChemistryModel>(thermo),
-    coeffsDict_(this->subDict("OptRodas34Coeffs")),
+    coeffsDict_(this->subDict("odeCoeffs")),
     absTol_(coeffsDict_.lookup<scalar>("absTol")),
     relTol_(coeffsDict_.lookup<scalar>("relTol")),
     maxSteps_(coeffsDict_.lookupOrDefault("maxSteps",10000)),

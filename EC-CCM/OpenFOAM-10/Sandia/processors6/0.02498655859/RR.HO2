@@ -1,0 +1,449 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  10
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    format      binary;
+    class       decomposedBlockData;
+    location    "/home/zhouyuchen/Desktop/FastChemistrySolver-OpenFOAM-10/EC-CCM/OpenFOAM-10/Sandia/processors6/0.02498655859/RR.HO2";
+    object      RR.HO2;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+
+// Processor0
+
+1799
+(/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  10
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    format      ascii;
+    class       volScalarField;
+    location    "0.02498655859";
+    object      RR.HO2;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+dimensions      [1 -3 -1 0 0 0 0];
+
+internalField   uniform 0;
+
+boundaryField
+{
+    inletCH4
+    {
+        type            calculated;
+        value           nonuniform List<scalar> 0();
+    }
+    wallOutside
+    {
+        type            calculated;
+        value           uniform 0;
+    }
+    wallTube
+    {
+        type            calculated;
+        value           nonuniform List<scalar> 0();
+    }
+    inletPilot
+    {
+        type            calculated;
+        value           nonuniform List<scalar> 0();
+    }
+    inletAir
+    {
+        type            calculated;
+        value           nonuniform List<scalar> 0();
+    }
+    outlet
+    {
+        type            calculated;
+        value           uniform 0;
+    }
+    axis
+    {
+        type            empty;
+    }
+    frontAndBack_pos
+    {
+        type            wedge;
+    }
+    frontAndBack_neg
+    {
+        type            wedge;
+    }
+    procBoundary0to2
+    {
+        type            processor;
+        value           uniform 0;
+    }
+    procBoundary0to4
+    {
+        type            processor;
+        value           uniform 0;
+    }
+}
+
+
+// ************************************************************************* //
+)
+
+// Processor1
+
+1222
+(dimensions      [1 -3 -1 0 0 0 0];
+
+internalField   uniform 0;
+
+boundaryField
+{
+    inletCH4
+    {
+        type            calculated;
+        value           nonuniform List<scalar> 0();
+    }
+    wallOutside
+    {
+        type            calculated;
+        value           uniform 0;
+    }
+    wallTube
+    {
+        type            calculated;
+        value           nonuniform List<scalar> 0();
+    }
+    inletPilot
+    {
+        type            calculated;
+        value           nonuniform List<scalar> 0();
+    }
+    inletAir
+    {
+        type            calculated;
+        value           uniform 0;
+    }
+    outlet
+    {
+        type            calculated;
+        value           nonuniform List<scalar> 0();
+    }
+    axis
+    {
+        type            empty;
+    }
+    frontAndBack_pos
+    {
+        type            wedge;
+    }
+    frontAndBack_neg
+    {
+        type            wedge;
+    }
+    procBoundary1to2
+    {
+        type            processor;
+        value           uniform 0;
+    }
+    procBoundary1to3
+    {
+        type            processor;
+        value           uniform 0;
+    }
+    procBoundary1to5
+    {
+        type            processor;
+        value           uniform 0;
+    }
+}
+)
+
+// Processor2
+
+1343
+(dimensions      [1 -3 -1 0 0 0 0];
+
+internalField   uniform 0;
+
+boundaryField
+{
+    inletCH4
+    {
+        type            calculated;
+        value           nonuniform List<scalar> 0();
+    }
+    wallOutside
+    {
+        type            calculated;
+        value           uniform 0;
+    }
+    wallTube
+    {
+        type            calculated;
+        value           nonuniform List<scalar> 0();
+    }
+    inletPilot
+    {
+        type            calculated;
+        value           nonuniform List<scalar> 0();
+    }
+    inletAir
+    {
+        type            calculated;
+        value           nonuniform List<scalar> 0();
+    }
+    outlet
+    {
+        type            calculated;
+        value           nonuniform List<scalar> 0();
+    }
+    axis
+    {
+        type            empty;
+    }
+    frontAndBack_pos
+    {
+        type            wedge;
+    }
+    frontAndBack_neg
+    {
+        type            wedge;
+    }
+    procBoundary2to0
+    {
+        type            processor;
+        value           uniform 0;
+    }
+    procBoundary2to1
+    {
+        type            processor;
+        value           uniform 0;
+    }
+    procBoundary2to4
+    {
+        type            processor;
+        value           uniform 0;
+    }
+    procBoundary2to5
+    {
+        type            processor;
+        value           uniform 0;
+    }
+}
+)
+
+// Processor3
+
+1083
+(dimensions      [1 -3 -1 0 0 0 0];
+
+internalField   uniform 0;
+
+boundaryField
+{
+    inletCH4
+    {
+        type            calculated;
+        value           uniform 0;
+    }
+    wallOutside
+    {
+        type            calculated;
+        value           nonuniform List<scalar> 0();
+    }
+    wallTube
+    {
+        type            calculated;
+        value           uniform 0;
+    }
+    inletPilot
+    {
+        type            calculated;
+        value           uniform 0;
+    }
+    inletAir
+    {
+        type            calculated;
+        value           uniform 0;
+    }
+    outlet
+    {
+        type            calculated;
+        value           nonuniform List<scalar> 0();
+    }
+    axis
+    {
+        type            empty;
+    }
+    frontAndBack_pos
+    {
+        type            wedge;
+    }
+    frontAndBack_neg
+    {
+        type            wedge;
+    }
+    procBoundary3to1
+    {
+        type            processor;
+        value           uniform 0;
+    }
+    procBoundary3to5
+    {
+        type            processor;
+        value           uniform 0;
+    }
+}
+)
+
+// Processor4
+
+1240
+(dimensions      [1 -3 -1 0 0 0 0];
+
+internalField   uniform 0;
+
+boundaryField
+{
+    inletCH4
+    {
+        type            calculated;
+        value           nonuniform List<scalar> 0();
+    }
+    wallOutside
+    {
+        type            calculated;
+        value           nonuniform List<scalar> 0();
+    }
+    wallTube
+    {
+        type            calculated;
+        value           nonuniform List<scalar> 0();
+    }
+    inletPilot
+    {
+        type            calculated;
+        value           nonuniform List<scalar> 0();
+    }
+    inletAir
+    {
+        type            calculated;
+        value           nonuniform List<scalar> 0();
+    }
+    outlet
+    {
+        type            calculated;
+        value           uniform 0;
+    }
+    axis
+    {
+        type            empty;
+    }
+    frontAndBack_pos
+    {
+        type            wedge;
+    }
+    frontAndBack_neg
+    {
+        type            wedge;
+    }
+    procBoundary4to0
+    {
+        type            processor;
+        value           uniform 0;
+    }
+    procBoundary4to2
+    {
+        type            processor;
+        value           uniform 0;
+    }
+    procBoundary4to5
+    {
+        type            processor;
+        value           uniform 0;
+    }
+}
+)
+
+// Processor5
+
+1361
+(dimensions      [1 -3 -1 0 0 0 0];
+
+internalField   uniform 0;
+
+boundaryField
+{
+    inletCH4
+    {
+        type            calculated;
+        value           nonuniform List<scalar> 0();
+    }
+    wallOutside
+    {
+        type            calculated;
+        value           nonuniform List<scalar> 0();
+    }
+    wallTube
+    {
+        type            calculated;
+        value           nonuniform List<scalar> 0();
+    }
+    inletPilot
+    {
+        type            calculated;
+        value           nonuniform List<scalar> 0();
+    }
+    inletAir
+    {
+        type            calculated;
+        value           nonuniform List<scalar> 0();
+    }
+    outlet
+    {
+        type            calculated;
+        value           nonuniform List<scalar> 0();
+    }
+    axis
+    {
+        type            empty;
+    }
+    frontAndBack_pos
+    {
+        type            wedge;
+    }
+    frontAndBack_neg
+    {
+        type            wedge;
+    }
+    procBoundary5to1
+    {
+        type            processor;
+        value           uniform 0;
+    }
+    procBoundary5to2
+    {
+        type            processor;
+        value           uniform 0;
+    }
+    procBoundary5to3
+    {
+        type            processor;
+        value           uniform 0;
+    }
+    procBoundary5to4
+    {
+        type            processor;
+        value           uniform 0;
+    }
+}
+)

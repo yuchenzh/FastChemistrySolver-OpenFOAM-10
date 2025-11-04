@@ -295,9 +295,11 @@ Foam::CCMchemistryModel<ThermoType>::CCMchemistryModel
     preAllocatedLocalRREntries_(),
     preAllocatedReturnToCore_(),
     preAllocatedReceivedRREntries_(),
+    optimizedODE_(CCMdict_.lookupOrDefault<Switch>("optimizedODE", false)),
     fastChemistryPtr_(
         basicFastChemistryModel::New(thermo)
     )
+
 {
 
     
@@ -369,7 +371,16 @@ Foam::CCMchemistryModel<ThermoType>::CCMchemistryModel
         Info << "Treating pressure variations in high Mach cases" << endl;
     }
     
-
+    if (optimizedODE_)
+    {
+        Info << "Using optimized ODE solver routines" << endl;
+        GetRRFunc_ = &CCMchemistryModel<ThermoType>::getRRGivenYTP_Optimized;
+    }
+    else
+    {
+        Info << "Using OpenFOAM-based ODE solver routines" << endl;
+        GetRRFunc_ = &CCMchemistryModel<ThermoType>::getRRGivenYTP_Basic;
+    }
 
     // accelerationInfo_.precision(5);
     // accelerationInfo_ << setw(8) << "time" << tab 
@@ -1937,7 +1948,9 @@ void Foam::CCMchemistryModel<ThermoType>::updateReactionRate()
         const scalar& rho0 = re.rho0;
         const scalar& rho = re.rho;
 
-        scalarField cellRR = getRRGivenYTP(Y, T, p, deltaT, deltaTChem, rho, rho0);
+        //scalarField cellRR = getRRGivenYTP(Y, T, p, deltaT, deltaTChem, rho, rho0);
+        scalarField cellRR = (this->*GetRRFunc_)(Y, T, p, deltaT, deltaTChem, rho, rho0);
+        
         if (debugMode_)
         {
             localRREntries.set(it.key(), RREntry(cellRR, deltaTChem,debugMode_,re.Y));
@@ -2075,6 +2088,36 @@ void Foam::CCMchemistryModel<ThermoType>::updateCCM4MeshChange()
             zoneRemainder_.setSize(nCells);
         }
     }
+}
+
+template<class ThermoType>
+Foam::scalarField Foam::CCMchemistryModel<ThermoType>::getRRGivenYTP_Basic
+(
+    scalarField& Y,
+    scalar& T,
+    scalar& p,
+    const scalar& deltaT,
+    scalar& deltaTChem,
+    const scalar& rho,
+    const scalar& rho0
+)
+{
+    return getRRGivenYTP(Y, T, p, deltaT, deltaTChem, rho, rho0);
+}
+
+template<class ThermoType>
+Foam::scalarField Foam::CCMchemistryModel<ThermoType>::getRRGivenYTP_Optimized
+(
+    scalarField& Y,
+    scalar& T,
+    scalar& p,
+    const scalar& deltaT,
+    scalar& deltaTChem,
+    const scalar& rho,
+    const scalar& rho0
+)
+{
+    return fastChemistryPtr_->getRRGivenYTP(Y, T, p, deltaT, deltaTChem, rho, rho0);
 }
 
 

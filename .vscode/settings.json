@@ -16,6 +16,10 @@
         "memory": "cpp",
         "stop_token": "cpp",
         "semaphore": "cpp",
-        "chemistryproperties": "cpp"
+        "chemistryproperties": "cpp",
+        "OptSeulex.C": "cpp",
+        "OptRodas34.C": "cpp",
+        "OptRosenbrock34.C": "cpp",
+        "thermophysicalproperties": "cpp"
     }
 }

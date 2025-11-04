@@ -3,6 +3,20 @@
 ## 项目概述
 这是一个基于 OpenFOAM-10 的快速化学求解器库，提供优化的化学反应求解功能。
 
+### 项目组成
+本项目包含两个主要部分：
+
+1. **FastChemistrySolver** (`src/` 目录)
+   - 提供快速化学反应率计算的基础库
+   - 包含优化的 ODE 求解器
+   - 实现 `getRRGivenYTP` 接口用于快速计算反应率
+
+2. **EC-CCM** (`EC-CCM/` 目录)
+   - Error Control - Chemistry Coordinate Mapping 方法的实现
+   - 通过将具有相似热化学状态 (Y, T, P) 的 CFD 单元分组来共享反应率
+   - 已集成 FastChemistrySolver 用于化学反应计算
+   - 支持多个 OpenFOAM 版本（7, 10, 13）
+
 ## 环境配置
 
 ### OpenFOAM 环境加载
@@ -28,33 +42,54 @@ testFoam   # 运行测试求解器
 
 ## 项目结构
 
-### 核心源代码
+### FastChemistrySolver 核心源代码 (`src/`)
 - `src/ChemistryModel/` - FastChemistryModel 核心实现
   - `FastChemistryModel.H` - 头文件
   - `FastChemistryModel.C` - 实现文件
 
 - `src/basicChemistryModel/` - 化学模型基类
-  - `basicChemistryModel.H` - 基类头文件
-  - `basicChemistryModel.C` - 基类实现
-  - `basicChemistryModelNew.C` - 运行时选择机制
+  - `basicFastChemistryModel.H` - 基类头文件（已重命名，避免与标准库冲突）
+  - `basicFastChemistryModel.C` - 基类实现
+  - `basicFastChemistryModelNew.C` - 运行时选择机制
 
 - `src/ODE/` - ODE 求解器
   - `OptRodas34/` - 优化的 Rodas34 求解器
   - `OptRosenbrock34/` - 优化的 Rosenbrock34 求解器
   - `OptSeulex/` - 优化的 Seulex 求解器
 
-### 测试求解器
+### FastChemistrySolver 测试求解器
 - `testSolver/` - 测试求解器目录
   - `reactingFoam.C` - 求解器主文件
   - `Make/files` - 编译文件列表
   - `Make/options` - 编译选项
 
-### 算例目录
+### FastChemistrySolver 算例目录
 - `tutorial/Ignition0D/` - 0维点火算例
 - `tutorial/CounterFlowFlame2D/` - 2维对撞火焰算例
 - `tutorial/LES/` - LES算例
 - `tutorial/RAS/` - RAS算例
 - `Sandia/` - Sandia火焰算例
+
+### EC-CCM 目录结构 (`EC-CCM/`)
+```
+EC-CCM/
+├── CLAUDE.md              # EC-CCM 项目文档
+├── OpenFOAM-7/           # OpenFOAM-7 版本实现
+│   ├── code/             # CCM 源代码
+│   └── Sandia/           # 测试算例
+├── OpenFOAM-10/          # OpenFOAM-10 版本实现（参考版本）
+│   ├── code/             # CCM 源代码
+│   │   ├── chemistryModel/      # 主 CCM 化学模型
+│   │   ├── odeChemistryModel/   # ODE 化学求解器集成
+│   │   ├── interface/           # 化学求解器接口
+│   │   ├── helpers/             # 工具类（调试、通信、燃烧计算）
+│   │   ├── ReactionEntry/       # 反应数据管理
+│   │   └── RoundRobin/          # 通信管理
+│   └── Sandia/           # 测试算例
+└── OpenFOAM-13/          # OpenFOAM-13 版本实现
+    ├── code/             # CCM 源代码
+    └── Sandia/           # 测试算例
+```
 
 ## 关键特性
 
