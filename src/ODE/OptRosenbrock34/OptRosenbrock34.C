@@ -33,10 +33,10 @@ License
 template<class ChemistryModel>
 Foam::OptRosenbrock34<ChemistryModel>::OptRosenbrock34
 (
-    const fluidReactionThermo& thermo
+    const fvMesh& mesh
 )
 :
-    chemistrySolver<ChemistryModel>(thermo),
+    chemistrySolver<ChemistryModel>(mesh),
     coeffsDict_(this->subDict("odeCoeffs")),
     absTol_(coeffsDict_.lookup<scalar>("absTol")),
     relTol_(coeffsDict_.lookup<scalar>("relTol")),

@@ -20,6 +20,9 @@
         "OptSeulex.C": "cpp",
         "OptRodas34.C": "cpp",
         "OptRosenbrock34.C": "cpp",
-        "thermophysicalproperties": "cpp"
+        "thermophysicalproperties": "cpp",
+        "LUsolver.C": "cpp",
+        "simpleDataBlock.C": "cpp",
+        "dataBlock.C": "cpp"
     }
 }

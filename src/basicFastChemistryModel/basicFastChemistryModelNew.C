@@ -31,16 +31,16 @@ License
 
 Foam::autoPtr<Foam::basicFastChemistryModel> Foam::basicFastChemistryModel::New
 (
-    const fluidReactionThermo& thermo
+    const fvMesh& mesh
 )
 {
     IOdictionary chemistryDict
     (
         IOobject
         (
-            thermo.phasePropertyName("chemistryProperties"),
-            thermo.T().mesh().time().constant(),
-            thermo.T().mesh(),
+            "chemistryProperties",
+            mesh.time().constant(),
+            mesh,
             IOobject::MUST_READ,
             IOobject::NO_WRITE,
             false
@@ -101,112 +101,24 @@ Foam::autoPtr<Foam::basicFastChemistryModel> Foam::basicFastChemistryModel::New
     const word chemSolverNameName =
         solverName + '<' + methodName + '>';
 
-    Info<< "Looking for: " << chemSolverNameName << endl;
-    Info<< "Available solvers in table: " << thermoConstructorTablePtr_->sortedToc() << endl;
 
-    typename thermoConstructorTable::iterator cstrIter =
-        thermoConstructorTablePtr_->find(chemSolverNameName);
 
-    if (cstrIter == thermoConstructorTablePtr_->end())
+    typename meshConstructorTable::iterator cstrIter =
+        meshConstructorTablePtr_->find(chemSolverNameName);
+
+    if (cstrIter == meshConstructorTablePtr_->end())
     {
-        if
-        (
-            dynamicCode::allowSystemOperations
-         && !dynamicCode::resolveTemplate(basicFastChemistryModel::typeName).empty()
-        )
-        {
-            List<Pair<word>> substitutions
-            (
-                basicThermo::thermoNameComponents(thermo.thermoName())
-            );
-
-            substitutions.append({"solver", solverName});
-            substitutions.append({"method", methodName});
-
-            compileTemplate chemistryModel
-            (
-                basicFastChemistryModel::typeName,
-                chemSolverNameName,
-                substitutions
-            );
-            cstrIter = thermoConstructorTablePtr_->find(chemSolverNameName);
-
-            if (cstrIter == thermoConstructorTablePtr_->end())
-            {
-                FatalErrorInFunction
-                    << "Compilation and linkage of "
-                    << basicFastChemistryModel::typeName << " type " << nl
-                    << "chemistryType" << chemistryTypeDict << nl << nl
-                    << "failed." << exit(FatalError);
-            }
-        }
-        else
-        {
-            FatalErrorInFunction
-                << "Unknown " << typeName_() << " type " << chemistryTypeDictNew
-                << endl;
-
-            const wordList names(thermoConstructorTablePtr_->sortedToc());
-
-            wordList thisCmpts;
-            thisCmpts.append(word::null);
-            thisCmpts.append(word::null);
-            thisCmpts.append
-            (
-                basicThermo::splitThermoName(thermo.thermoName(), 5)
-            );
-
-            List<wordList> validNames;
-            validNames.append(wordList(2, word::null));
-            validNames[0][0] = "solver";
-            validNames[0][1] = "method";
-            forAll(names, i)
-            {
-                const wordList cmpts(basicThermo::splitThermoName(names[i], 7));
-
-                if
-                (
-                    SubList<word>(cmpts, 5, 2)
-                 == SubList<word>(thisCmpts, 5, 2)
-                )
-                {
-                    validNames.append(SubList<word>(cmpts, 2));
-                }
-            }
-
-            FatalErrorInFunction
-                << "Valid " << validNames[0][0] << '/' << validNames[0][1]
-                << " combinations for this thermodynamic model are:"
-                << endl << endl;
-            printTable(validNames, FatalErrorInFunction);
-
-            FatalErrorInFunction << endl;
-
-            List<wordList> validCmpts;
-            validCmpts.append(wordList(7, word::null));
-            validCmpts[0][0] = "solver";
-            validCmpts[0][1] = "method";
-            validCmpts[0][2] = "transport";
-            validCmpts[0][3] = "thermo";
-            validCmpts[0][4] = "equationOfState";
-            validCmpts[0][5] = "specie";
-            validCmpts[0][6] = "energy";
-            forAll(names, i)
-            {
-                validCmpts.append(basicThermo::splitThermoName(names[i], 7));
-            }
-
-            FatalErrorInFunction
-                << "All " << validCmpts[0][0] << '/' << validCmpts[0][1]
-                << "/thermodynamics combinations are:"
-                << endl << endl;
-            printTable(validCmpts, FatalErrorInFunction);
-
-            FatalErrorInFunction << exit(FatalError);
-        }
+        // Info<< "Looking for: " << chemSolverNameName << endl;
+        // Info<< "Available solvers in table: " << meshConstructorTablePtr_->sortedToc() << endl;
+        FatalErrorInFunction
+            << "Unknown chemistry solver type "
+            << chemSolverNameName << nl << nl
+            << "Valid chemistry solver types are:" << nl
+            << meshConstructorTablePtr_->sortedToc()
+            << exit(FatalError);
     }
 
-    return autoPtr<basicFastChemistryModel>(cstrIter()(thermo));
+    return autoPtr<basicFastChemistryModel>(cstrIter()(mesh));
 }
 
 

@@ -169,8 +169,8 @@ public:
 
     // Constructors
 
-        //- Construct from thermo
-        OptRosenbrock34(const fluidReactionThermo& thermo);
+        //- Construct from mesh
+        OptRosenbrock34(const fvMesh& mesh);
 
     //- Destructor
     virtual ~OptRosenbrock34();

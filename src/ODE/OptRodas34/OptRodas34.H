@@ -159,8 +159,8 @@ public:
 
     // Constructors
 
-        //- Construct from thermo
-        OptRodas34(const fluidReactionThermo& thermo);
+        //- Construct from mesh
+        OptRodas34(const fvMesh& mesh);
 
 
     //- Destructor

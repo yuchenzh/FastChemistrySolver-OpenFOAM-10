@@ -31,11 +31,11 @@ License
 
 Foam::FastChemistryModel::FastChemistryModel
 (
-    const fluidReactionThermo& thermo
+    const fvMesh& mesh
 )
-:   basicFastChemistryModel(thermo),
-    Yvf_(this->thermo().composition().Y()),
-    nSpecie_(Yvf_.size()),
+:   basicFastChemistryModel(mesh),
+    //  Yvf_(0),
+    // nSpecie_(Yvf_.size()),
     jacobianType_
     (
         this->found("jacobian")
@@ -43,14 +43,14 @@ Foam::FastChemistryModel::FastChemistryModel
       : jacobianType::exact
     ),
     reaction(),
-    RR_(this->nSpecie_),
-    n_(this->nSpecie_+1),
+    // RR_(this->nSpecie_),
+    // n_(this->nSpecie_+1),
     alignN(n_+(4-(this->nSpecie_+1)%4)),
     Treact(this->lookupOrDefault("Treact",0)),
     DLBthreshold(this->lookupOrDefault("DLBthreshold",1.0)),
     MaxIter(this->lookupOrDefault("Iter",1)),
     cpuLoadTransferTable(Pstream::nProcs()),
-    CPUtimeField(thermo.T().mesh().C().size()),
+    CPUtimeField(mesh.C().size()),
     chemistryIntegrationTime(Pstream::nProcs()),
     sendBufferSize_(Pstream::nProcs()),
     recvBufferSize_(Pstream::nProcs()),
@@ -58,14 +58,21 @@ Foam::FastChemistryModel::FastChemistryModel
     recvBuffer_(Pstream::nProcs()),
     recvBufPos_(Pstream::nProcs()),
     firstTime(true),
-    skip(thermo.T().mesh().C().size(),false),
+    skip(mesh.C().size(),false),
     IamBusyProcess(Pstream::nProcs(),true),
     Balance(this->lookupOrDefault("balance", false))
 {
 
     const IOdictionary thermoDict
     (
-        physicalProperties::findModelDict(this->mesh(), word::null)
+        IOobject
+        (
+            "physicalProperties",
+            this->mesh().time().constant(),
+            this->mesh(),
+            IOobject::MUST_READ_IF_MODIFIED,
+            IOobject::NO_WRITE
+        )
     );
     const IOdictionary chemistryProperties
     (
@@ -79,11 +86,15 @@ Foam::FastChemistryModel::FastChemistryModel
         )
     );
 
+    hashedWordList speciesTable(thermoDict.lookup("species"));
+    nSpecie_ = speciesTable.size();
+    RR_.setSize(nSpecie_);
+    n_ = nSpecie_ + 1;
+
     label defaultIndex = 0;
     const word defaultSpecie = thermoDict.lookupBackwardsCompatible<word>({"defaultSpecie","inertSpecie"});
     Info<<"The default specie is "<<defaultSpecie<<endl;
 
-    hashedWordList speciesTable(thermoDict.lookup("species"));
     defaultIndex = speciesTable[defaultSpecie];
 
     if(defaultIndex<0 ||defaultIndex>=this->nSpecie())
@@ -95,26 +106,26 @@ Foam::FastChemistryModel::FastChemistryModel
     reaction.readInfo(chemistryProperties,thermoDict);
 
     // Create the fields for the chemistry sources
-    forAll(RR_, fieldi)
-    {
-        RR_.set
-        (
-            fieldi,
-            new volScalarField
-            (
-                IOobject
-                (
-                    "RR." + Yvf_[fieldi].name(),
-                    this->mesh().time().timeName(),
-                    this->mesh(),
-                    IOobject::NO_READ,
-                    IOobject::AUTO_WRITE
-                ),
-                thermo.T().mesh(),
-                dimensionedScalar(dimMass/dimVolume/dimTime, 0)
-            )
-        );
-    }
+    // forAll(RR_, fieldi)
+    // {
+    //     RR_.set
+    //     (
+    //         fieldi,
+    //         new volScalarField
+    //         (
+    //             IOobject
+    //             (
+    //                 "RR." + Yvf_[fieldi].name(),
+    //                 this->mesh().time().timeName(),
+    //                 this->mesh(),
+    //                 IOobject::NO_READ,
+    //                 IOobject::AUTO_WRITE
+    //             ),
+    //             mesh,
+    //             dimensionedScalar(dimMass/dimVolume/dimTime, 0)
+    //         )
+    //     );
+    // }
 
     Info<< "FastChemistryModel: Number of species = " << nSpecie_
         << " and reactions = " << nReaction() << endl;
@@ -379,57 +390,57 @@ Foam::FastChemistryModel::tc() const
     );
     scalarField& tc = ttc.ref();
 
-    tmp<volScalarField> trho(this->thermo().rho());
-    const scalarField& rho = trho();
+    // tmp<volScalarField> trho(this->thermo().rho());
+    // const scalarField& rho = trho();
 
-    const scalarField& T = this->thermo().T();
-    const scalarField& p = this->thermo().p();
+    // const scalarField& T = this->thermo().T();
+    // const scalarField& p = this->thermo().p();
 
-    double* __restrict__ C = this->YTpWork[0];
+    // double* __restrict__ C = this->YTpWork[0];
 
-    if (this->chemistry_)
-    {
+    // if (this->chemistry_)
+    // {
 
-        forAll(rho, celli)
-        {
-            const scalar rhoi = rho[celli];
-            const scalar Ti = T[celli];
-            const scalar pi = p[celli];
+    //     forAll(rho, celli)
+    //     {
+    //         const scalar rhoi = rho[celli];
+    //         const scalar Ti = T[celli];
+    //         const scalar pi = p[celli];
 
-            for (label i=0; i<nSpecie_; i++)
-            {
-                C[i] = rhoi*Yvf_[i][celli]*reaction.invW[i];
-            }
+    //         for (label i=0; i<nSpecie_; i++)
+    //         {
+    //             C[i] = rhoi*Yvf_[i][celli]*reaction.invW[i];
+    //         }
 
-            // A reaction's rate scale is calculated as it's molar
-            // production rate divided by the total number of moles in the
-            // system.
-            //
-            // The system rate scale is the average of the reactions' rate
-            // scales weighted by the reactions' molar production rates. This
-            // weighting ensures that dominant reactions provide the largest
-            // contribution to the system rate scale.
-            //
-            // The system time scale is then the reciprocal of the system rate
-            // scale.
-            //
-            // Contributions from forward and reverse reaction rates are
-            // handled independently and identically so that reversible
-            // reactions produce the same result as the equivalent pair of
-            // irreversible reactions.
-            scalar sumW = 0, sumWRateByCTot = 0;
-            reaction.Tc(celli,pi,Ti,C,sumW,sumWRateByCTot);
+    //         // A reaction's rate scale is calculated as it's molar
+    //         // production rate divided by the total number of moles in the
+    //         // system.
+    //         //
+    //         // The system rate scale is the average of the reactions' rate
+    //         // scales weighted by the reactions' molar production rates. This
+    //         // weighting ensures that dominant reactions provide the largest
+    //         // contribution to the system rate scale.
+    //         //
+    //         // The system time scale is then the reciprocal of the system rate
+    //         // scale.
+    //         //
+    //         // Contributions from forward and reverse reaction rates are
+    //         // handled independently and identically so that reversible
+    //         // reactions produce the same result as the equivalent pair of
+    //         // irreversible reactions.
+    //         scalar sumW = 0, sumWRateByCTot = 0;
+    //         reaction.Tc(celli,pi,Ti,C,sumW,sumWRateByCTot);
 
-            double sumc = 0;
-            for(int i = 0; i < this->nSpecie();i++)
-            {
-                sumc += C[i];
-            }
-            tc[celli] =
-                sumWRateByCTot == 0 ? vGreat : sumW/sumWRateByCTot*sumc;
-        }
-    }
-    ttc.ref().correctBoundaryConditions();
+    //         double sumc = 0;
+    //         for(int i = 0; i < this->nSpecie();i++)
+    //         {
+    //             sumc += C[i];
+    //         }
+    //         tc[celli] =
+    //             sumWRateByCTot == 0 ? vGreat : sumW/sumWRateByCTot*sumc;
+    //     }
+    // }
+    // ttc.ref().correctBoundaryConditions();
     return ttc;
 }
 
@@ -446,21 +457,21 @@ Foam::FastChemistryModel::Qdot() const
         )
     );
 
-    if (this->chemistry_)
-    {
+    // if (this->chemistry_)
+    // {
 
-        scalarField& Qdot = tQdot.ref();
+    //     scalarField& Qdot = tQdot.ref();
 
-        forAll(Yvf_, i)
-        {
-            forAll(Qdot, celli)
-            {
-                //const scalar hi = specieThermos_[i].Hf();
-                const double hi = reaction.Hf[i];
-                Qdot[celli] -= hi*RR_[i][celli];
-            }
-        }
-    }
+    //     forAll(Yvf_, i)
+    //     {
+    //         forAll(Qdot, celli)
+    //         {
+    //             //const scalar hi = specieThermos_[i].Hf();
+    //             const double hi = reaction.Hf[i];
+    //             Qdot[celli] -= hi*RR_[i][celli];
+    //         }
+    //     }
+    // }
 
     return tQdot;
 }
@@ -497,39 +508,39 @@ void Foam::FastChemistryModel::calculate()
         return;
     }
 
-    tmp<volScalarField> trho(this->thermo().rho());
-    const scalarField& rho = trho();
+    // tmp<volScalarField> trho(this->thermo().rho());
+    // const scalarField& rho = trho();
 
-    const scalarField& T = this->thermo().T();
-    const scalarField& p = this->thermo().p();
-    double* __restrict__ C = YTpWork[0];
-    double* __restrict__ dNdtByV = YTpWork[1];
-    double* __restrict__ Cp = YTpWork[2];
-    double* __restrict__ Ha = YTpWork[3];
+    // const scalarField& T = this->thermo().T();
+    // const scalarField& p = this->thermo().p();
+    // double* __restrict__ C = YTpWork[0];
+    // double* __restrict__ dNdtByV = YTpWork[1];
+    // double* __restrict__ Cp = YTpWork[2];
+    // double* __restrict__ Ha = YTpWork[3];
 
-    forAll(rho, celli)
-    {
-        const scalar rhoi = rho[celli];
-        const scalar Ti = T[celli];
-        const scalar pi = p[celli];
+    // forAll(rho, celli)
+    // {
+    //     const scalar rhoi = rho[celli];
+    //     const scalar Ti = T[celli];
+    //     const scalar pi = p[celli];
 
-        for (int i=0; i<this->nSpecie(); i++)
-        {
-            const scalar Yi = Yvf_[i][celli];
-            C[i] = rhoi*Yi*reaction.invW[i];
-        }
-        std::memset(C, 0, this->alignN * sizeof(double)*4);
-        reaction.dNdtByV(pi,Ti,C,dNdtByV,Cp,Ha);
-        for (int i=0; i<this->nSpecie(); i++)
-        {
-            RR_[i][celli] = dNdtByV[i]*reaction.W[i];
-        }
-    }
+    //     for (int i=0; i<this->nSpecie(); i++)
+    //     {
+    //         const scalar Yi = Yvf_[i][celli];
+    //         C[i] = rhoi*Yi*reaction.invW[i];
+    //     }
+    //     std::memset(C, 0, this->alignN * sizeof(double)*4);
+    //     reaction.dNdtByV(pi,Ti,C,dNdtByV,Cp,Ha);
+    //     for (int i=0; i<this->nSpecie(); i++)
+    //     {
+    //         RR_[i][celli] = dNdtByV[i]*reaction.W[i];
+    //     }
+    // }
     return;
 }
 
-#include "FastChemistryModel_transientSolve.H"
-#include "FastChemistryModel_localEulerSolve.H"
+// #include "FastChemistryModel_transientSolve.H"
+// #include "FastChemistryModel_localEulerSolve.H"
 
 void Foam::FastChemistryModel::exchange
 (

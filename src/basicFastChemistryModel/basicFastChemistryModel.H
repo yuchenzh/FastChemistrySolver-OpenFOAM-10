@@ -77,9 +77,6 @@ protected:
         //- Reference to the mesh database
         const fvMesh& mesh_;
 
-        //- Reference to the thermo
-        const fluidReactionThermo& thermo_;
-
         //- Chemistry activation switch
         Switch chemistry_;
 
@@ -110,16 +107,16 @@ public:
     (
         autoPtr,
         basicFastChemistryModel,
-        thermo,
-        (const fluidReactionThermo& thermo),
-        (thermo)
+        mesh,
+        (const fvMesh& mesh),
+        (mesh)
     );
 
 
     // Constructors
 
-        //- Construct from thermo
-        basicFastChemistryModel(const fluidReactionThermo& thermo);
+        //- Construct from mesh
+        basicFastChemistryModel(const fvMesh& mesh);
 
         //- Disallow default bitwise copy construction
         basicFastChemistryModel(const basicFastChemistryModel&) = delete;
@@ -127,10 +124,10 @@ public:
 
     // Selectors
 
-        //- Select based on fluid reaction thermo
+        //- Select based on mesh
         static autoPtr<basicFastChemistryModel> New
         (
-            const fluidReactionThermo& thermo
+            const fvMesh& mesh
         );
 
 
@@ -144,7 +141,7 @@ public:
         inline const fvMesh& mesh() const;
 
         //- Return const access to the thermo
-        inline const fluidReactionThermo& thermo() const;
+        // inline const fluidReactionThermo& thermo() const;
 
         //- Chemistry activation switch
         inline Switch chemistry() const;

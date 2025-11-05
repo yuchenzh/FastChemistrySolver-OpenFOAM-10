@@ -31,11 +31,11 @@ inline const Foam::fvMesh& Foam::basicFastChemistryModel::mesh() const
 }
 
 
-inline const Foam::fluidReactionThermo&
-Foam::basicFastChemistryModel::thermo() const
-{
-    return thermo_;
-}
+// inline const Foam::fluidReactionThermo&
+// Foam::basicFastChemistryModel::thermo() const
+// {
+//     return thermo_;
+// }
 
 
 inline Foam::Switch Foam::basicFastChemistryModel::chemistry() const

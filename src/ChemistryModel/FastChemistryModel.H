@@ -57,8 +57,8 @@ class FastChemistryModel
 {
     // Private data
 
-        //- Reference to the field of specie mass fractions
-        const PtrList<volScalarField>& Yvf_;
+        // //- Reference to the field of specie mass fractions
+        // const PtrList<volScalarField>& Yvf_;
 
         //- Number of species
         label nSpecie_;
@@ -170,8 +170,8 @@ public:
 
     // Constructors
 
-        //- Construct from thermo
-        FastChemistryModel(const fluidReactionThermo& thermo);
+        //- Construct from mesh
+        FastChemistryModel(const fvMesh& mesh);
 
         //- Disallow default bitwise copy construction
         FastChemistryModel(const FastChemistryModel&) = delete;

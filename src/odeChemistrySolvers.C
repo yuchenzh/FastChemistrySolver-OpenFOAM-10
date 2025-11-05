@@ -78,7 +78,7 @@ defineTypeNameAndDebug(FastChemistryModel, 0);
     (                                                                          \
         basicFastChemistryModel,                                               \
         Solver##FastChemistryModel,                                            \
-        thermo                                                                 \
+        mesh                                                                 \
     )
 
 // Register ODE solvers

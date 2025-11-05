@@ -48,7 +48,7 @@ const Foam::NamedEnum
 namespace Foam
 {
     defineTypeNameAndDebug(basicFastChemistryModel, 0);
-    defineRunTimeSelectionTable(basicFastChemistryModel, thermo);
+    defineRunTimeSelectionTable(basicFastChemistryModel, mesh);
 }
 
 
@@ -62,22 +62,22 @@ void Foam::basicFastChemistryModel::correct()
 
 Foam::basicFastChemistryModel::basicFastChemistryModel
 (
-    const fluidReactionThermo& thermo
+    const fvMesh& mesh
 )
 :
     IOdictionary
     (
         IOobject
         (
-            thermo.phasePropertyName("chemistryProperties"),
-            thermo.T().mesh().time().constant(),
-            thermo.T().mesh(),
+            "chemistryProperties",
+            mesh.time().constant(),
+            mesh,
             IOobject::MUST_READ_IF_MODIFIED,
             IOobject::NO_WRITE
         )
     ),
-    mesh_(thermo.T().mesh()),
-    thermo_(thermo),
+    mesh_(mesh),
+    // thermo_(thermo),
     chemistry_(lookup("chemistry")),
     deltaTChemIni_(lookup<scalar>("initialChemicalTimeStep")),
     deltaTChemMax_(lookupOrDefault("maxChemicalTimeStep", great)),
@@ -85,13 +85,13 @@ Foam::basicFastChemistryModel::basicFastChemistryModel
     (
         IOobject
         (
-            thermo.phasePropertyName("deltaTChem"),
+            "deltaTChem",
             mesh().time().constant(),
             mesh(),
             IOobject::NO_READ,
             IOobject::NO_WRITE
         ),
-        mesh(),
+        mesh,
         dimensionedScalar(dimTime, deltaTChemIni_)
     )
 {}

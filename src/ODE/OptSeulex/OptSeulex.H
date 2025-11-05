@@ -170,8 +170,8 @@ public:
 
     // Constructors
 
-        //- Construct from thermo
-        OptSeulex(const fluidReactionThermo& thermo);
+        //- Construct from mesh
+        OptSeulex(const fvMesh& mesh);
 
 
     //- Destructor
