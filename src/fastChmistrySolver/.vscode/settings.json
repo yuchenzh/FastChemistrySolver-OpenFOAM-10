@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "chemistrySolver.C": "cpp",
+        "ode.C": "cpp",
+        "chemistrySolvers.C": "cpp"
+    }
+}

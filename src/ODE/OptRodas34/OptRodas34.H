@@ -44,7 +44,7 @@ SourceFiles
 #ifndef OptRodas34_H
 #define OptRodas34_H
 
-#include "chemistrySolver.H"
+#include "fastChemistrySolver.H"
 #include "simpleMatrix.H"
 #include <iostream>
 #include <vector>
@@ -63,7 +63,7 @@ namespace Foam
 template<class ChemistryModel>
 class OptRodas34
 :
-    public chemistrySolver<ChemistryModel>
+    public fastChemistrySolver<ChemistryModel>
 {
     // Private Data
     class stepState

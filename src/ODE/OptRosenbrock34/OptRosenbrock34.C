@@ -36,7 +36,7 @@ Foam::OptRosenbrock34<ChemistryModel>::OptRosenbrock34
     const fvMesh& mesh
 )
 :
-    chemistrySolver<ChemistryModel>(mesh),
+    fastChemistrySolver<ChemistryModel>(mesh),
     coeffsDict_(this->subDict("odeCoeffs")),
     absTol_(coeffsDict_.lookup<scalar>("absTol")),
     relTol_(coeffsDict_.lookup<scalar>("relTol")),

@@ -297,7 +297,7 @@ Foam::CCMchemistryModel<ThermoType>::CCMchemistryModel
     preAllocatedReceivedRREntries_(),
     optimizedODE_(CCMdict_.lookupOrDefault<Switch>("optimizedODE", false)),
     fastChemistryPtr_(
-        basicFastChemistryModel::New(thermo)
+        basicFastChemistryModel::New(mesh())
     )
 
 {

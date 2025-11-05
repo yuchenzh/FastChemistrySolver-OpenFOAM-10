@@ -57,7 +57,7 @@ SourceFiles
 #include <vector>
 #include <algorithm>
 
-#include "chemistrySolver.H"
+#include "fastChemistrySolver.H"
 #include "simpleMatrix.H"
 
 
@@ -76,7 +76,7 @@ namespace Foam
 template<class ChemistryModel>
 class OptRosenbrock34
 :
-    public chemistrySolver<ChemistryModel>
+    public fastChemistrySolver<ChemistryModel>
 {
     // Private Data
 

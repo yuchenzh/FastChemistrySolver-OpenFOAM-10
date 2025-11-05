@@ -23,6 +23,9 @@
         "thermophysicalproperties": "cpp",
         "LUsolver.C": "cpp",
         "simpleDataBlock.C": "cpp",
-        "dataBlock.C": "cpp"
+        "dataBlock.C": "cpp",
+        "chemistrySolver.C": "cpp",
+        "chemistrySolvers.C": "cpp",
+        "fastChemistrySolver.C": "cpp"
     }
 }

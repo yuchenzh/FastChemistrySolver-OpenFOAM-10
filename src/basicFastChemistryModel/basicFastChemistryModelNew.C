@@ -50,14 +50,8 @@ Foam::autoPtr<Foam::basicFastChemistryModel> Foam::basicFastChemistryModel::New
     if (!chemistryDict.isDict("chemistryType"))
     {
         FatalErrorInFunction
-            << "Template parameter based chemistry solver selection is no "
-            << "longer supported. Please create a chemistryType dictionary"
-            << "instead." << endl << endl << "For example, the entry:" << endl
-            << "    chemistrySolver ode<chemistryModel<"
-            << "rhoChemistryModel,sutherland<specie<janaf<perfectGas>,"
-            << "sensibleInternalEnergy>>>>" << endl << endl << "becomes:"
-            << endl << "    chemistryType" << endl << "    {" << endl
-            << "        solver ode;" << endl << "    }" << exit(FatalError);
+            << "chemistryType dictionary not found in chemistryProperties file"
+            << exit(FatalError);
     }
 
     const dictionary& chemistryTypeDict =
