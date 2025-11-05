@@ -1,14 +1,14 @@
-basicFastChemistryModel/basicFastChemistryModel.C
-basicFastChemistryModel/basicFastChemistryModelNew.C
+ChemistryModel/basicFastChemistryModel/basicFastChemistryModel.C
+ChemistryModel/basicFastChemistryModel/basicFastChemistryModelNew.C
 
-ChemistryModel/FastChemistryModel.C
+ChemistryModel/fastChemistryModel/FastChemistryModel.C
 
 Reaction/OptReaction.C
 Reaction/Jacobian.C
 Reaction/ReactionRate.C
 Reaction/Tc.C
 
-odeChemistrySolvers.C
+ChemistryModel/odeChemistrySolvers.C
 
 dataBlock/dataBlock.C
 dataBlock/simpleDataBlock/simpleDataBlock.C

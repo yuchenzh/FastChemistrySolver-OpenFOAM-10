@@ -651,26 +651,32 @@ void OptReaction::readInfo
 
         this->n_Reactions++;
 
-        if(reactionTypeName == "irreversibleArrhenius")
+        if(reactionTypeName == "irreversibleArrhenius" || 
+           reactionTypeName == "irreversibleArrheniusReaction")
         {
             this->n_Arrhenius++;
         }
-        else if(reactionTypeName == "reversibleArrhenius")
+        else if(reactionTypeName == "reversibleArrhenius" ||
+            reactionTypeName == "reversibleArrheniusReaction")
         {
             this->n_Arrhenius++;
         }
-        else if(reactionTypeName == "nonEquilibriumReversibleArrhenius")
+        else if(reactionTypeName == "nonEquilibriumReversibleArrhenius" ||
+            reactionTypeName == "nonEquilibriumReversibleArrheniusReaction")
         {
             this->n_NonEquilibriumReversibleArrhenius++;
         }
-        else if(reactionTypeName == "nonEquilibriumReversibleThirdBodyArrhenius")
+        else if(reactionTypeName == "nonEquilibriumReversibleThirdBodyArrhenius" ||
+            reactionTypeName == "nonEquilibriumReversibleThirdBodyArrheniusReaction")
         {
             this->n_NonEquilibriumThirdBodyReaction++;
         }
         else if
         (
             reactionTypeName == "reversibleThirdBodyArrhenius"||
-            reactionTypeName == "irreversibleThirdBodyArrhenius"
+            reactionTypeName == "irreversibleThirdBodyArrhenius"||
+            reactionTypeName == "reversibleThirdBodyArrheniusReaction" ||
+            reactionTypeName == "irreversibleThirdBodyArrheniusReaction"
         )
         {
             this->n_ThirdBodyReaction++;
@@ -678,7 +684,9 @@ void OptReaction::readInfo
         else if
         (
             reactionTypeName == "reversibleArrheniusLindemannFallOff"||
-            reactionTypeName == "irreversibleArrheniusLindemannFallOff"
+            reactionTypeName == "irreversibleArrheniusLindemannFallOff"||
+            reactionTypeName == "reversibleArrheniusLindemannFallOffReaction"||
+            reactionTypeName == "irreversibleArrheniusLindemannFallOffReaction"
         )
         {
             this->n_Fall_Off_Reaction++;nLindemann++;
@@ -686,7 +694,9 @@ void OptReaction::readInfo
         else if
         (
             reactionTypeName == "reversibleArrheniusTroeFallOff"||
-            reactionTypeName == "irreversibleArrheniusTroeFallOff"
+            reactionTypeName == "irreversibleArrheniusTroeFallOff"||
+            reactionTypeName == "reversibleArrheniusTroeFallOffReaction"||
+            reactionTypeName == "irreversibleArrheniusTroeFallOffReaction"
         )
         {
             this->n_Fall_Off_Reaction++;nTroe++;
@@ -694,7 +704,9 @@ void OptReaction::readInfo
         else if
         (
             reactionTypeName == "reversibleArrheniusSRIFallOff"||
-            reactionTypeName == "irreversibleArrheniusSRIFallOff"
+            reactionTypeName == "irreversibleArrheniusSRIFallOff"||
+            reactionTypeName == "reversibleArrheniusSRIFallOffReaction"||
+            reactionTypeName == "irreversibleArrheniusSRIFallOffReaction"
         )
         {
             this->n_Fall_Off_Reaction++;nSRI++;
@@ -702,7 +714,9 @@ void OptReaction::readInfo
         else if
         (
             reactionTypeName == "reversibleArrheniusLindemannChemicallyActivated"||
-            reactionTypeName == "irreversibleArrheniusLindemannChemicallyActivated"
+            reactionTypeName == "irreversibleArrheniusLindemannChemicallyActivated"||
+            reactionTypeName == "reversibleArrheniusLindemannChemicallyActivatedReaction"||
+            reactionTypeName == "irreversibleArrheniusLindemannChemicallyActivatedReaction"
         )
         {
             this->n_ChemicallyActivated_Reaction++;nLindemann++;
@@ -710,7 +724,9 @@ void OptReaction::readInfo
         else if
         (
             reactionTypeName == "reversibleArrheniusTroeChemicallyActivated"||
-            reactionTypeName == "irreversibleArrheniusTroeChemicallyActivated"
+            reactionTypeName == "irreversibleArrheniusTroeChemicallyActivated"||
+            reactionTypeName == "reversibleArrheniusTroeChemicallyActivatedReaction"||
+            reactionTypeName == "irreversibleArrheniusTroeChemicallyActivatedReaction"
         )
         {
             this->n_ChemicallyActivated_Reaction++;nTroe++;
@@ -718,7 +734,9 @@ void OptReaction::readInfo
         else if
         (
             reactionTypeName == "reversibleArrheniusSRIChemicallyActivated"||
-            reactionTypeName == "irreversibleArrheniusSRIChemicallyActivated"
+            reactionTypeName == "irreversibleArrheniusSRIChemicallyActivated"||
+            reactionTypeName == "reversibleArrheniusSRIChemicallyActivatedReaction"||
+            reactionTypeName == "irreversibleArrheniusSRIChemicallyActivatedReaction"
         )
         {
             this->n_ChemicallyActivated_Reaction++;nSRI++;
@@ -726,7 +744,9 @@ void OptReaction::readInfo
         else if
         (
             reactionTypeName == "reversibleArrheniusPLOG"||
-            reactionTypeName == "irreversibleArrheniusPLOG"
+            reactionTypeName == "irreversibleArrheniusPLOG"||
+            reactionTypeName == "reversibleArrheniusPLOGReaction"||
+            reactionTypeName == "irreversibleArrheniusPLOGReaction"
         )
         {
             this->n_PlogReaction++;
