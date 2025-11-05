@@ -36,7 +36,9 @@ SourceFiles
 #ifndef basicFastChemistryModel_H
 #define basicFastChemistryModel_H
 
-#include "fluidReactionThermo.H"
+// #include "fluidReactionThermo.H"
+#include "volFields.H"
+#include "autoPtr.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 

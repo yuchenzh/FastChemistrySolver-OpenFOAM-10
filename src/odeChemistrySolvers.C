@@ -28,11 +28,11 @@ License
 #include "OptSeulex.H"
 #include "FastChemistryModel.H"
 #include "basicFastChemistryModel.H"
-#include "forGases.H"
-#include "forLiquids.H"
+// #include "forGases.H"
+// #include "forLiquids.H"
 //#include "makeChemistrySolver.H"
-#include "forThermo.H"
-#include "chemistryModel.H"
+// #include "forThermo.H"
+//#include "chemistryModel.H"
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
 namespace Foam

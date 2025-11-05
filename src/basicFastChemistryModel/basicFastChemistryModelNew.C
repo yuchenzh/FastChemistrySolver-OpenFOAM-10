@@ -24,7 +24,7 @@ License
 \*---------------------------------------------------------------------------*/
 
 #include "basicFastChemistryModel.H"
-#include "basicThermo.H"
+// #include "basicThermo.H"
 #include "compileTemplate.H"
 
 // * * * * * * * * * * * * * * * * Selectors * * * * * * * * * * * * * * * * //

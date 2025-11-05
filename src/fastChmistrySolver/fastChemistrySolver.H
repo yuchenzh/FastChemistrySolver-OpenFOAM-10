@@ -36,8 +36,10 @@ SourceFiles
 #define fastChemistrySolver_H
 
 #include "IOdictionary.H"
-#include "scalarField.H"
-#include "fluidReactionThermo.H"
+// #include "scalarField.H"
+// #include "fluidReactionThermo.H"
+#include "volFields.H"
+#include "autoPtr.H"
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
