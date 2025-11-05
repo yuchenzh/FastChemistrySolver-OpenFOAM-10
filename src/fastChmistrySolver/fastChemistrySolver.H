@@ -68,16 +68,16 @@ public:
 
     // Member Functions
 
-        // //- Update the concentrations and return the chemical time
-        // virtual void solve
-        // (
-        //     scalar& p,
-        //     scalar& T,
-        //     scalarField& c,
-        //     const label li,
-        //     scalar& deltaT,
-        //     scalar& subDeltaT
-        // ) const = 0;
+        //- Update the concentrations and return the chemical time
+        virtual void solve
+        (
+            scalar& p,
+            scalar& T,
+            scalarField& c,
+            const label li,
+            scalar& deltaT,
+            scalar& subDeltaT
+        ) const = 0;
 };
 
 

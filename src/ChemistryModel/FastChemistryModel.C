@@ -538,7 +538,25 @@ void Foam::FastChemistryModel::calculate()
     // }
     return;
 }
+Foam::scalar Foam::FastChemistryModel::solve
+(
+    const scalarField& deltaT
+)
+{
+    // Deceive the compiler
+    scalar deltaTMin = great;
+    return deltaTMin;
+}
 
+Foam::scalar Foam::FastChemistryModel::solve
+(
+    const scalar deltaT
+)
+{
+    // Deceive the compiler
+    scalar deltaTMin = great;
+    return deltaTMin;
+}
 // #include "FastChemistryModel_transientSolve.H"
 // #include "FastChemistryModel_localEulerSolve.H"
 

@@ -56,7 +56,7 @@ CCM
     nSlice                50;
     ignoreMin            1e-6;
 
-    optimizedODE         true;
+    optimizedODE         false;
 
     // debug Switches
     debugMode            false;
